@@ -149,7 +149,7 @@ df_leaderboard.columns = [
     "Повесили Яйца", "Получили Яйца"
 ]
 
-# === ПОРЯДОК ЭЛЕМЕНТОВ (ПАТТЕРН: ТАБЛИЦЫ НАВЕРХУ) ===
+# === ПОРЯДОК ЭЛЕМЕНТОВ ===
 
 # 1. Шапка сайта и кнопка обновления
 st.title("🃏 Чемпионат по Белке")
@@ -157,7 +157,7 @@ if st.button("🔄 Обновить данные"):
     load_data()
     st.rerun()
 
-# 2. ГЛАВНАЯ ТАБЛИЦА СРАЗУ НАВЕРХУ
+# 2. ГЛАВНАЯ ТАБЛИЦА
 st.markdown("### 🏆 Главная турнирная таблица")
 df_main = df_leaderboard.sort_values(by=["Всего очков", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
 df_main.index = df_main.index + 1
@@ -165,7 +165,7 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-# 3. ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА В ЗАДАННОМ ПОРЯДКЕ В КЛАДКАХ
+# 3. ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА
 st.markdown("### 📊 Дополнительная аналитика")
 tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📝 История всех игр", 
@@ -174,7 +174,7 @@ tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "👥 Результативность пар"
 ])
 
-# Вкладка 1: История всех игр (Теперь первая)
+# Вкладка 1: История всех игр
 with tab_history:
     st.markdown("#### История сыгранных матчей")
     if st.session_state.games:
@@ -193,23 +193,49 @@ with tab_history:
     else:
         st.info("Игр еще не было.")
 
-# Вкладка 2: Положительный рейтинг
+# Вкладка 2: Положительный рейтинг (Нумерация изменена с 1)
 with tab_positive:
     st.markdown("#### Кто чаще раздавал особые статусы")
     sub_p1, sub_p2, sub_p3, sub_p4 = st.tabs(["🔥 Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])
-    with sub_p1: st.dataframe(df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_p2: st.dataframe(df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_p3: st.dataframe(df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_p4: st.dataframe(df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
+    
+    with sub_p1:
+        df_p1 = df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True)
+        df_p1.index = df_p1.index + 1
+        st.dataframe(df_p1, use_container_width=True)
+    with sub_p2:
+        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
+        df_p2.index = df_p2.index + 1
+        st.dataframe(df_p2, use_container_width=True)
+    with sub_p3:
+        df_p3 = df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True)
+        df_p3.index = df_p3.index + 1
+        st.dataframe(df_p3, use_container_width=True)
+    with sub_p4:
+        df_p4 = df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True)
+        df_p4.index = df_p4.index + 1
+        st.dataframe(df_p4, use_container_width=True)
 
-# Вкладка 3: Отрицательный рейтинг
+# Вкладка 3: Отрицательный рейтинг (Нумерация изменена с 1)
 with tab_negative:
     st.markdown("#### Кто чаще ловил раздачи")
     sub_n1, sub_n2, sub_n3, sub_n4 = st.tabs(["👁️ Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])
-    with sub_n1: st.dataframe(df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_n2: st.dataframe(df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_n3: st.dataframe(df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_n4: st.dataframe(df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
+    
+    with sub_n1:
+        df_n1 = df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True)
+        df_n1.index = df_n1.index + 1
+        st.dataframe(df_n1, use_container_width=True)
+    with sub_n2:
+        df_n2 = df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True)
+        df_n2.index = df_n2.index + 1
+        st.dataframe(df_n2, use_container_width=True)
+    with sub_n3:
+        df_n3 = df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True)
+        df_n3.index = df_n3.index + 1
+        st.dataframe(df_n3, use_container_width=True)
+    with sub_n4:
+        df_n4 = df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True)
+        df_n4.index = df_n4.index + 1
+        st.dataframe(df_n4, use_container_width=True)
 
 # Вкладка 4: Результативность пар
 with tab_pairs:
@@ -224,7 +250,7 @@ with tab_pairs:
 
 st.markdown("---")
 
-# 4. ФОРМЫ УПРАВЛЕНИЯ ВНИЗУ (Разбиты на 2 аккуратные колонки для ПК, на мобилках они встанут друг под друга)
+# 4. ФОРМЫ УПРАВЛЕНИЯ ВНИЗУ
 col_bottom1, col_bottom2 = st.columns([1, 1])
 
 with col_bottom1:
@@ -306,7 +332,7 @@ with col_bottom2:
 
 st.markdown("---")
 
-# 5. УПРАВЛЕНИЕ СОСТАВОМ И СБРОС В САМОМ НИЗУ
+# 5. УПРАВЛЕНИЕ СОСТАВОМ В САМОМ НИЗУ
 st.markdown("### ⚙️ Управление составом игроков")
 col_p1, col_p2 = st.columns(2)
 with col_p1:
@@ -327,13 +353,4 @@ with col_p2:
             st.session_state.players.remove(player_to_remove)
             save_players()
             st.warning("Удален!")
-            st.rerun()
-
-with st.expander("🚨 Полный сброс турнира"):
-    input_password = st.text_input("Секретный код:", type="password", key="clear_pass")
-    if st.button("Очистить все таблицы"):
-        if input_password == "5559":
-            st.session_state.games = []
-            save_games()
-            st.success("Турнир обнулен!")
             st.rerun()

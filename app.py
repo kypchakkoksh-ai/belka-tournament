@@ -8,6 +8,7 @@ import time
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно, адаптивность, крупные шрифты для мобильных) ---
+# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно, адаптивность, исправление цвета текста) ---
 st.markdown("""
     <style>
     /* Настройка главного фона - благородный темно-зеленый */
@@ -15,6 +16,18 @@ st.markdown("""
         background-color: #0b3017;
         background-image: radial-gradient(circle, #0e4220 0%, #071f0e 100%);
         color: #f0f2f6;
+    }
+    
+    /* ИСПРАВЛЕНИЕ: Делаем подписи к полям ввода (Победитель 1, Пароль и т.д.) ярко-белыми */
+    .stWidgetFormLabel, label, [data-testid="stWidgetLabel"] p {
+        color: #ffffff !important;
+        font-weight: bold !important;
+        font-size: 14px !important;
+    }
+    
+    /* Стилизация чекбоксов (текст рядом с галочкой "Повесили Яйца") */
+    [data-testid="stCheckbox"] label p {
+        color: #ffffff !important;
     }
     
     /* Стилизация карточек и блоков для читаемости на мобильных */
@@ -46,6 +59,16 @@ st.markdown("""
     
     /* Красивые кастомные контейнеры для форм */
     .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+    }
+    
+    /* Стилизация разделителей */
+    hr {
+        border-top: 1px solid #1e7e34 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
         padding-top: 2rem !important;
         padding-bottom: 3rem !important;
     }

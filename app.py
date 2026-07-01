@@ -215,9 +215,7 @@ with tab_positive:
         df_p1.index = df_p1.index + 1
         st.dataframe(df_p1, use_container_width=True)
     with sub_p2:
-        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Voice. Теке", ascending=False, errors='ignore').reset_index(drop=True)
-        if "Выигр. Теке" in df_leaderboard.columns:
-            df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
+        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
         df_p2.index = df_p2.index + 1
         st.dataframe(df_p2, use_container_width=True)
     with sub_p3:

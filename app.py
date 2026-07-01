@@ -7,7 +7,6 @@ import time
 # Настройка страницы: дефолтный dark mode и заголовок
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
-# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно, адаптивность, крупные шрифты для мобильных) ---
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно, адаптивность, исправление цвета текста) ---
 st.markdown("""
     <style>
@@ -18,7 +17,7 @@ st.markdown("""
         color: #f0f2f6;
     }
     
-    /* ИСПРАВЛЕНИЕ: Делаем подписи к полям ввода (Победитель 1, Пароль и т.д.) ярко-белыми */
+    /* Делаем подписи к полям ввода (Победитель 1, Пароль и т.д.) ярко-белыми */
     .stWidgetFormLabel, label, [data-testid="stWidgetLabel"] p {
         color: #ffffff !important;
         font-weight: bold !important;
@@ -59,16 +58,6 @@ st.markdown("""
     
     /* Красивые кастомные контейнеры для форм */
     .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 3rem !important;
-    }
-    
-    /* Стилизация разделителей */
-    hr {
-        border-top: 1px solid #1e7e34 !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
         padding-top: 2rem !important;
         padding-bottom: 3rem !important;
     }
@@ -216,7 +205,7 @@ with tab_history:
     else:
         st.info("Игр еще не было.")
 
-# Вкладка 2: Положительный рейтинг (Нумерация изменена с 1)
+# Вкладка 2: Положительный рейтинг
 with tab_positive:
     st.markdown("#### Кто чаще раздавал особые статусы")
     sub_p1, sub_p2, sub_p3, sub_p4 = st.tabs(["🔥 Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])
@@ -226,7 +215,9 @@ with tab_positive:
         df_p1.index = df_p1.index + 1
         st.dataframe(df_p1, use_container_width=True)
     with sub_p2:
-        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
+        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Voice. Теке", ascending=False, errors='ignore').reset_index(drop=True)
+        if "Выигр. Теке" in df_leaderboard.columns:
+            df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
         df_p2.index = df_p2.index + 1
         st.dataframe(df_p2, use_container_width=True)
     with sub_p3:
@@ -238,7 +229,7 @@ with tab_positive:
         df_p4.index = df_p4.index + 1
         st.dataframe(df_p4, use_container_width=True)
 
-# Вкладка 3: Отрицательный рейтинг (Нумерация изменена с 1)
+# Вкладка 3: Отрицательный рейтинг
 with tab_negative:
     st.markdown("#### Кто чаще ловил раздачи")
     sub_n1, sub_n2, sub_n3, sub_n4 = st.tabs(["👁️ Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])

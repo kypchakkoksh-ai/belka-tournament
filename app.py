@@ -4,12 +4,62 @@ import json
 import os
 import time
 
+# Настройка страницы: дефолтный dark mode и заголовок
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
+
+# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно, адаптивность, крупные шрифты для мобильных) ---
+st.markdown("""
+    <style>
+    /* Настройка главного фона - благородный темно-зеленый */
+    .stApp {
+        background-color: #0b3017;
+        background-image: radial-gradient(circle, #0e4220 0%, #071f0e 100%);
+        color: #f0f2f6;
+    }
+    
+    /* Стилизация карточек и блоков для читаемости на мобильных */
+    div.stButton > button {
+        width: 100% !important;
+        background-color: #1e7e34 !important;
+        color: white !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        border: 1px solid #28a745 !important;
+        padding: 0.5rem 1rem !important;
+    }
+    div.stButton > button:hover {
+        background-color: #218838 !important;
+        border-color: #1e7e34 !important;
+    }
+    
+    /* Делаем вкладки (Tabs) крупными и удобными для пальцев на телефоне */
+    button[data-baseweb="tab"] {
+        font-size: 16px !important;
+        font-weight: bold !important;
+        padding: 12px 16px !important;
+        color: #a3cfbb !important;
+    }
+    button[aria-selected="true"] {
+        color: #ffffff !important;
+        border-bottom-color: #28a745 !important;
+    }
+    
+    /* Красивые кастомные контейнеры для форм */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+    }
+    
+    /* Стилизация разделителей */
+    hr {
+        border-top: 1px solid #1e7e34 !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 PLAYERS_FILE = "belka_players.json"
 GAMES_FILE = "belka_games.json"
 
-# --- БЕЗОПАСНАЯ СИНХРОНИЗАЦИЯ С ДИСКОМ ---
 def load_data():
     if os.path.exists(PLAYERS_FILE):
         try:
@@ -50,164 +100,6 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     additional = 2 if eggs else 0
     return base_points + additional, 0
-
-st.title("🃏 Чемпионат по карточной игре «Белка»")
-st.subheader("Сетевая система учета результатов")
-
-if st.button("🔄 Обновить таблицу (Загрузить новые данные)"):
-    load_data()
-    st.rerun()
-
-col_form, col_table = st.columns([1, 1.4])
-
-# --- ЛЕВАЯ КОЛОНКА: ВВОД И УПРАВЛЕНИЕ ---
-with col_form:
-    st.markdown("### ➕ Регистрация сыгранной игры")
-    
-    match_password = st.text_input("🔑 Пароль администратора (Ввод / Правка):", type="password", help="Введите 6666, чтобы разблокировать управление матчами")
-    
-    with st.form("match_form", clear_on_submit=False):
-        st.markdown("**КОМАНДА 1 (Победители)**")
-        p1 = st.selectbox("Победитель 1", st.session_state.players, index=0 if len(st.session_state.players) > 0 else None)
-        p2 = st.selectbox("Победитель 2", st.session_state.players, index=1 if len(st.session_state.players) > 1 else None)
-        
-        st.markdown("**КОМАНДА 2 (Проигравшие)**")
-        p3 = st.selectbox("Проигравший 1", st.session_state.players, index=2 if len(st.session_state.players) > 2 else None)
-        p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3 if len(st.session_state.players) > 3 else None)
-        
-        st.markdown("**РЕЗУЛЬТАТ ИГРЫ**")
-        status = st.selectbox("Что дали победители?", list(POINTS_DICT.keys()))
-        eggs = st.checkbox("Повесили «Яйца» (+2 очка победителям)")
-        
-        submit = st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ ИГРЫ")
-        
-        if submit:
-            if match_password != "6666":
-                st.error("🔒 Отказано в доступе! Неверный пароль администратора.")
-            elif not (p1 and p2 and p3 and p4):
-                st.error("Ошибка: Недостаточно игроков!")
-            else:
-                selected_players = [p1, p2, p3, p4]
-                if len(set(selected_players)) < 4:
-                    st.error("Ошибка: Один и тот же игрок не может быть выбран дважды!")
-                else:
-                    load_data()
-                    win_pts, loss_pts = calculate_match_points(status, eggs)
-                    match_data = {
-                        "win_team": [p1, p2],
-                        "loss_team": [p3, p4],
-                        "win_points": win_pts,
-                        "loss_points": loss_pts,
-                        "raw_status": status,
-                        "eggs_happened": eggs,
-                        "status": f"{status} {'+ Яйца' if eggs else ''}",
-                        "timestamp": time.time()
-                    }
-                    st.session_state.games.append(match_data)
-                    save_games()
-                    st.success(f"Успешно сохранено! Победителям начислено: +{win_pts} очков.")
-                    st.rerun()
-
-    # --- КОРРЕКТИРОВКА И УДАЛЕНИЕ МАТЧЕЙ ---
-    st.markdown("---")
-    st.markdown("### ✏️ Корректировка прошедших матчей")
-    
-    with st.expander("Изменить или удалить конкретную игру"):
-        if not st.session_state.games:
-            st.info("История матчей пуста.")
-        else:
-            match_indices = list(range(1, len(st.session_state.games) + 1))
-            selected_match_num = st.selectbox("Выберите номер матча из истории (№):", match_indices)
-            
-            target_idx = selected_match_num - 1
-            current_match = st.session_state.games[target_idx]
-            
-            st.markdown(f"**Текущие данные матча №{selected_match_num}:** \n"
-                        f"Победили: *{current_match['win_team'][0]}, {current_match['win_team'][1]}* \n"
-                        f"Проиграли: *{current_match['loss_team'][0]}, {current_match['loss_team'][1]}* \n"
-                        f"Исход: *{current_match['status']}*")
-            
-            st.markdown("---")
-            st.markdown("**Новые параметры для этого матча:**")
-            
-            try: edit_p1_idx = st.session_state.players.index(current_match['win_team'][0])
-            except: edit_p1_idx = 0
-            try: edit_p2_idx = st.session_state.players.index(current_match['win_team'][1])
-            except: edit_p2_idx = 1
-            try: edit_p3_idx = st.session_state.players.index(current_match['loss_team'][0])
-            except: edit_p3_idx = 2
-            try: edit_p4_idx = st.session_state.players.index(current_match['loss_team'][1])
-            except: edit_p4_idx = 3
-            try: edit_status_idx = list(POINTS_DICT.keys()).index(current_match['raw_status'])
-            except: edit_status_idx = 0
-
-            edit_p1 = st.selectbox("Новый Победитель 1", st.session_state.players, index=edit_p1_idx, key="e_p1")
-            edit_p2 = st.selectbox("Новый Победитель 2", st.session_state.players, index=edit_p2_idx, key="e_p2")
-            edit_p3 = st.selectbox("Новый Проигравший 1", st.session_state.players, index=edit_p3_idx, key="e_p3")
-            edit_p4 = st.selectbox("Новый Проигравший 2", st.session_state.players, index=edit_p4_idx, key="e_p4")
-            edit_status = st.selectbox("Новый исход", list(POINTS_DICT.keys()), index=edit_status_idx, key="e_stat")
-            edit_eggs = st.checkbox("Повесили «Яйца»", value=current_match.get("eggs_happened", False), key="e_eggs")
-            
-            col_btn1, col_btn2 = st.columns(2)
-            
-            with col_btn1:
-                if st.button("💾 Сохранить изменения", key="save_edit_btn"):
-                    if match_password != "6666":
-                        st.error("🔒 Неверный пароль!")
-                    elif len({edit_p1, edit_p2, edit_p3, edit_p4}) < 4:
-                        st.error("Ошибка: Игроки дублируются!")
-                    else:
-                        load_data()
-                        win_pts, loss_pts = calculate_match_points(edit_status, edit_eggs)
-                        st.session_state.games[target_idx] = {
-                            "win_team": [edit_p1, edit_p2],
-                            "loss_team": [edit_p3, edit_p4],
-                            "win_points": win_pts,
-                            "loss_points": loss_pts,
-                            "raw_status": edit_status,
-                            "eggs_happened": edit_eggs,
-                            "status": f"{edit_status} {'+ Яйца' if edit_eggs else ''}",
-                            "timestamp": current_match.get('timestamp', time.time())
-                        }
-                        save_games()
-                        st.success(f"Матч №{selected_match_num} успешно изменен!")
-                        st.rerun()
-                        
-            with col_btn2:
-                if st.button("🗑️ Полностью удалить этот матч", key="delete_match_btn"):
-                    if match_password != "6666":
-                        st.error("🔒 Неверный пароль!")
-                    else:
-                        load_data()
-                        st.session_state.games.pop(target_idx)
-                        save_games()
-                        st.warning(f"Матч №{selected_match_num} полностью удален из истории!")
-                        st.rerun()
-
-    # --- УПРАВЛЕНИЕ СПИСКОМ ИГРОКОВ ---
-    st.markdown("---")
-    st.markdown("### ⚙️ Управление составом игроков")
-    
-    with st.expander("➕ Добавить нового игрока"):
-        new_player = st.text_input("Имя нового участника:")
-        if st.button("Зарегистрировать игрока"):
-            load_data()
-            if new_player.strip() == "": st.error("Имя пустое!")
-            elif new_player in st.session_state.players: st.error("Уже есть!")
-            else:
-                st.session_state.players.append(new_player.strip())
-                save_players()
-                st.success(f"Добавлен {new_player}!")
-                st.rerun()
-
-    with st.expander("❌ Удалить игрока из списка"):
-        player_to_remove = st.selectbox("Выберите кого удалить:", st.session_state.players, key="remove_select")
-        if st.button("Удалить игрока навсегда"):
-            load_data()
-            st.session_state.players.remove(player_to_remove)
-            save_players()
-            st.warning(f"Игрок {player_to_remove} удален.")
-            st.rerun()
 
 # --- СБОР РАСШИРЕННОЙ СТАТИСТИКИ ---
 stats = {
@@ -257,93 +149,191 @@ df_leaderboard.columns = [
     "Повесили Яйца", "Получили Яйца"
 ]
 
-# --- ПРАВАЯ КОЛОНКА: ГЛАВНЫЙ ЭКРАН ---
-with col_table:
-    st.markdown("### 🏆 Главная турнирная таблица чемпионата")
-    
-    df_main = df_leaderboard.sort_values(by=["Всего очков", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
-    df_main.index = df_main.index + 1
-    st.dataframe(df_main, use_container_width=True)
-    
-    st.markdown("---")
-    with st.expander("🚨 Сброс результатов турнира (Требуется пароль организатора)"):
-        input_password = st.text_input("Введите секретный код для удаления всех игр турнира:", type="password", key="clear_pass")
-        if st.button("Подтвердить полное уничтожение данных таблицы"):
-            if input_password == "5559":
-                st.session_state.games = []
-                save_games()
-                st.success("Все матчи успешно стёрты!")
-                st.rerun()
-            else:
-                st.error("Неверный пароль доступа.")
+# === ПОРЯДОК ЭЛЕМЕНТОВ (ПАТТЕРН: ТАБЛИЦЫ НАВЕРХУ) ===
 
-# --- НИЖНЯЯ ПАНЕЛЬ: АНАЛИТИКА ---
+# 1. Шапка сайта и кнопка обновления
+st.title("🃏 Чемпионат по Белке")
+if st.button("🔄 Обновить данные"):
+    load_data()
+    st.rerun()
+
+# 2. ГЛАВНАЯ ТАБЛИЦА СРАЗУ НАВЕРХУ
+st.markdown("### 🏆 Главная турнирная таблица")
+df_main = df_leaderboard.sort_values(by=["Всего очков", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
+df_main.index = df_main.index + 1
+st.dataframe(df_main, use_container_width=True)
+
 st.markdown("---")
-st.markdown("### 📊 Дополнительная аналитика чемпионата")
 
-# Разделяем на верхние глобальные вкладки
-main_tab1, main_tab2, main_tab3, main_tab4 = st.tabs([
-    "🚀 Положительный рейтинг (Кто раздал)", 
-    "📉 Отрицательный рейтинг (Кто поймал)", 
-    "👥 Результативность пар", 
-    "📝 История всех матчей"
+# 3. ДОПОЛНИТЕЛЬНАЯ АНАЛИТИКА В ЗАДАННОМ ПОРЯДКЕ В КЛАДКАХ
+st.markdown("### 📊 Дополнительная аналитика")
+tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
+    "📝 История всех игр", 
+    "🚀 Положительный рейтинг", 
+    "📉 Отрицательный рейтинг", 
+    "👥 Результативность пар"
 ])
 
-# 1. ПОЛОЖИТЕЛЬНЫЙ РЕЙТИНГ
-with main_tab1:
-    st.markdown("#### 🏆 Лидеры по раздаче особых статусов (Сортировка от большего к меньшему)")
-    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["🔥 Выданные Сокыры", "🐐 Выданные Теке", "🪵 Выданные Голые", "🥚 Повешенные Яйца"])
-    
-    with sub_tab1:
-        st.dataframe(df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_tab2:
-        st.dataframe(df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_tab3:
-        st.dataframe(df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
-    with sub_tab4:
-        st.dataframe(df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
-
-# 2. ОТРИЦАТЕЛЬНЫЙ РЕЙТИНГ
-with main_tab2:
-    st.markdown("#### 🚨 «Анти-лидеры» турнира — те, кто чаще всего ловил раздачи (Сортировка от худшего к лучшему)")
-    neg_tab1, neg_tab2, neg_tab3, neg_tab4 = st.tabs(["👁️ Пойманные Сокыры", "🐐 Полученные Теке", "🪵 Полученные Голые", "🥚 Словленные Яйца"])
-    
-    with neg_tab1:
-        st.dataframe(df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
-    with neg_tab2:
-        st.dataframe(df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
-    with neg_tab3:
-        st.dataframe(df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
-    with neg_tab4:
-        st.dataframe(df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
-
-# 3. РЕЙТИНГ ПАР
-with main_tab3:
-    st.markdown("#### 👥 Совместная результативность связок")
-    if pairs_stats:
-        pairs_list = [{"Связка / Пара игроков": f"{k[0]} 🤝 {k[1]}", "Набранные очки пары": v["Очки"], "Совместных игр": v["Игры"], "Эффективность пары (средняя)": round(v["Очки"] / v["Игры"], 2)} for k, v in pairs_stats.items()]
-        df_pairs_final = pd.DataFrame(pairs_list).sort_values(by=["Набранные очки пары", "Эффективность пары (средняя)"], ascending=[False, False]).reset_index(drop=True)
-        df_pairs_final.index = df_pairs_final.index + 1
-        st.dataframe(df_pairs_final, use_container_width=True)
-    else:
-        st.info("Матчей пока нет.")
-
-# 4. ИСТОРИЯ
-with main_tab4:
-    st.markdown("#### 📝 История всех сыгранных матчей")
+# Вкладка 1: История всех игр (Теперь первая)
+with tab_history:
+    st.markdown("#### История сыгранных матчей")
     if st.session_state.games:
         log_data = []
         indexed_games = list(enumerate(st.session_state.games, 1))
         sorted_games = sorted(indexed_games, key=lambda x: x[1].get('timestamp', 0), reverse=True)
-        
         for original_num, g in sorted_games:
             log_data.append({
                 "Матч №": original_num, 
                 "Победители": f"{g['win_team'][0]}, {g['win_team'][1]}", 
                 "Проигравшие": f"{g['loss_team'][0]}, {g['loss_team'][1]}", 
                 "Что произошло": g["status"], 
-                "Очки выигравших": f"+{g['win_points']}"
+                "Очки": f"+{g['win_points']}"
             })
-        st.table(log_data)
+        st.dataframe(pd.DataFrame(log_data), use_container_width=True, hide_index=True)
     else:
         st.info("Игр еще не было.")
+
+# Вкладка 2: Положительный рейтинг
+with tab_positive:
+    st.markdown("#### Кто чаще раздавал особые статусы")
+    sub_p1, sub_p2, sub_p3, sub_p4 = st.tabs(["🔥 Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])
+    with sub_p1: st.dataframe(df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_p2: st.dataframe(df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_p3: st.dataframe(df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_p4: st.dataframe(df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
+
+# Вкладка 3: Отрицательный рейтинг
+with tab_negative:
+    st.markdown("#### Кто чаще ловил раздачи")
+    sub_n1, sub_n2, sub_n3, sub_n4 = st.tabs(["👁️ Сокыры", "🐐 Теке", "🪵 Голые", "🥚 Яйца"])
+    with sub_n1: st.dataframe(df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_n2: st.dataframe(df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_n3: st.dataframe(df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True), use_container_width=True)
+    with sub_n4: st.dataframe(df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True), use_container_width=True)
+
+# Вкладка 4: Результативность пар
+with tab_pairs:
+    st.markdown("#### Рейтинг связок")
+    if pairs_stats:
+        pairs_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Игры"], 2)} for k, v in pairs_stats.items()]
+        df_p = pd.DataFrame(pairs_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
+        df_p.index = df_p.index + 1
+        st.dataframe(df_p, use_container_width=True)
+    else:
+        st.info("Матчей пока нет.")
+
+st.markdown("---")
+
+# 4. ФОРМЫ УПРАВЛЕНИЯ ВНИЗУ (Разбиты на 2 аккуратные колонки для ПК, на мобилках они встанут друг под друга)
+col_bottom1, col_bottom2 = st.columns([1, 1])
+
+with col_bottom1:
+    st.markdown("### ➕ Регистрация игры")
+    match_password = st.text_input("🔑 Пароль (Ввод / Правка):", type="password")
+    
+    with st.form("match_form", clear_on_submit=False):
+        p1 = st.selectbox("Победитель 1", st.session_state.players, index=0 if len(st.session_state.players) > 0 else None)
+        p2 = st.selectbox("Победитель 2", st.session_state.players, index=1 if len(st.session_state.players) > 1 else None)
+        p3 = st.selectbox("Проигравший 1", st.session_state.players, index=2 if len(st.session_state.players) > 2 else None)
+        p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3 if len(st.session_state.players) > 3 else None)
+        status = st.selectbox("Что дали победители?", list(POINTS_DICT.keys()))
+        eggs = st.checkbox("Повесили «Яйца» (+2 очка)")
+        
+        if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
+            if match_password != "6666":
+                st.error("🔒 Неверный пароль!")
+            elif len({p1, p2, p3, p4}) < 4:
+                st.error("Ошибка: Игроки дублируются!")
+            else:
+                load_data()
+                win_pts, loss_pts = calculate_match_points(status, eggs)
+                st.session_state.games.append({
+                    "win_team": [p1, p2], "loss_team": [p3, p4],
+                    "win_points": win_pts, "loss_points": loss_pts,
+                    "raw_status": status, "eggs_happened": eggs,
+                    "status": f"{status} {'+ Яйца' if eggs else ''}", "timestamp": time.time()
+                })
+                save_games()
+                st.success("Сохранено!")
+                st.rerun()
+
+with col_bottom2:
+    st.markdown("### ✏️ Корректировка прошедших матчей")
+    with st.expander("Открыть панель редактирования"):
+        if not st.session_state.games:
+            st.info("История пуста.")
+        else:
+            match_indices = list(range(1, len(st.session_state.games) + 1))
+            selected_match_num = st.selectbox("Выберите № матча:", match_indices)
+            target_idx = selected_match_num - 1
+            current_match = st.session_state.games[target_idx]
+            
+            st.caption(f"Сейчас: {current_match['win_team'][0]}/{current_match['win_team'][1]} обыграли {current_match['loss_team'][0]}/{current_match['loss_team'][1]} ({current_match['status']})")
+            
+            edit_p1 = st.selectbox("Новый Поб-1", st.session_state.players, index=st.session_state.players.index(current_match['win_team'][0]) if current_match['win_team'][0] in st.session_state.players else 0)
+            edit_p2 = st.selectbox("Новый Поб-2", st.session_state.players, index=st.session_state.players.index(current_match['win_team'][1]) if current_match['win_team'][1] in st.session_state.players else 1)
+            edit_p3 = st.selectbox("Новый Проиг-1", st.session_state.players, index=st.session_state.players.index(current_match['loss_team'][0]) if current_match['loss_team'][0] in st.session_state.players else 2)
+            edit_p4 = st.selectbox("Новый Проиг-2", st.session_state.players, index=st.session_state.players.index(current_match['loss_team'][1]) if current_match['loss_team'][1] in st.session_state.players else 3)
+            edit_status = st.selectbox("Новый исход", list(POINTS_DICT.keys()), index=list(POINTS_DICT.keys()).index(current_match['raw_status']) if current_match['raw_status'] in POINTS_DICT else 0)
+            edit_eggs = st.checkbox("Были Яйца", value=current_match.get("eggs_happened", False), key="edit_eg_ch")
+            
+            cb1, cb2 = st.columns(2)
+            with cb1:
+                if st.button("💾 Изменить"):
+                    if match_password != "6666": st.error("Пароль!")
+                    elif len({edit_p1, edit_p2, edit_p3, edit_p4}) < 4: st.error("Дубли!")
+                    else:
+                        load_data()
+                        w_pts, _ = calculate_match_points(edit_status, edit_eggs)
+                        st.session_state.games[target_idx] = {
+                            "win_team": [edit_p1, edit_p2], "loss_team": [edit_p3, edit_p4],
+                            "win_points": w_pts, "loss_points": 0, "raw_status": edit_status,
+                            "eggs_happened": edit_eggs, "status": f"{edit_status} {'+ Яйца' if edit_eggs else ''}",
+                            "timestamp": current_match.get('timestamp', time.time())
+                        }
+                        save_games()
+                        st.success("Изменено!")
+                        st.rerun()
+            with cb2:
+                if st.button("🗑️ Удалить матч"):
+                    if match_password != "6666": st.error("Пароль!")
+                    else:
+                        load_data()
+                        st.session_state.games.pop(target_idx)
+                        save_games()
+                        st.warning("Удалено!")
+                        st.rerun()
+
+st.markdown("---")
+
+# 5. УПРАВЛЕНИЕ СОСТАВОМ И СБРОС В САМОМ НИЗУ
+st.markdown("### ⚙️ Управление составом игроков")
+col_p1, col_p2 = st.columns(2)
+with col_p1:
+    with st.expander("➕ Добавить игрока"):
+        new_player = st.text_input("Имя:")
+        if st.button("Зарегистрировать"):
+            load_data()
+            if new_player.strip() and new_player.strip() not in st.session_state.players:
+                st.session_state.players.append(new_player.strip())
+                save_players()
+                st.success("Добавлен!")
+                st.rerun()
+with col_p2:
+    with st.expander("❌ Удалить игрока"):
+        player_to_remove = st.selectbox("Кого удалить:", st.session_state.players)
+        if st.button("Удалить навсегда"):
+            load_data()
+            st.session_state.players.remove(player_to_remove)
+            save_players()
+            st.warning("Удален!")
+            st.rerun()
+
+with st.expander("🚨 Полный сброс турнира"):
+    input_password = st.text_input("Секретный код:", type="password", key="clear_pass")
+    if st.button("Очистить все таблицы"):
+        if input_password == "5559":
+            st.session_state.games = []
+            save_games()
+            st.success("Турнир обнулен!")
+            st.rerun()

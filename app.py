@@ -42,19 +42,29 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Базовый список игроков на случай пустой таблицы
+DEFAULT_PLAYERS = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
+
 # Инициализация подключения к Google Sheets через Secrets
 conn = st.connection("gsheets", type=GSheetsConnection)
 
 def load_data():
     try:
-        # Читаем данные с листов 'players' и 'games'
-        df_p = conn.read(worksheet="players", ttl=5)
-        df_g = conn.read(worksheet="games", ttl=5)
+        # Читаем данные с листов, игнорируя старый кэш
+        df_p = conn.read(worksheet="players", ttl=0)
+        df_g = conn.read(worksheet="games", ttl=0)
         
-        players = df_p['Имя'].dropna().tolist() if not df_p.empty and 'Имя' in df_p.columns else []
-        games = df_g.to_dict(orient='records') if not df_g.empty else []
+        if df_p is not None and not df_p.empty and 'Имя' in df_p.columns:
+            players = df_p['Имя'].dropna().astype(str).tolist()
+        else:
+            players = DEFAULT_PLAYERS.copy()
+            
+        if df_g is not None and not df_g.empty:
+            games = df_g.to_dict(orient='records')
+        else:
+            games = []
         
-        # Превращаем строки с игроками обратно в списки для логики пар
+        # Парсим текстовые строки участников обратно в массивы
         for g in games:
             if isinstance(g.get('win_team'), str):
                 g['win_team'] = [x.strip() for x in g['win_team'].split(',')]
@@ -62,14 +72,14 @@ def load_data():
                 g['loss_team'] = [x.strip() for x in g['loss_team'].split(',')]
                 
         if not players:
-            players = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
+            players = DEFAULT_PLAYERS.copy()
             
         return players, games
-    except Exception as e:
-        # Резервный вариант, если таблица еще совсем пустая
-        return ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"], []
+    except Exception:
+        # Если таблица полностью пустая или недоступна на этапе запуска
+        return DEFAULT_PLAYERS.copy(), []
 
-# Загрузка актуальных данных в сессию
+# Загрузка данных в сессию
 st.session_state.players, st.session_state.games = load_data()
 
 POINTS_DICT = {
@@ -99,29 +109,30 @@ for game in st.session_state.games:
     try:
         win_team = game.get("win_team", [])
         loss_team = game.get("loss_team", [])
-        if len(win_team) < 2 or len(loss_team) < 2: continue
+        if not isinstance(win_team, list) or len(win_team) < 2: continue
+        if not isinstance(loss_team, list) or len(loss_team) < 2: continue
         
         win_pair = tuple(sorted(win_team))
         if win_pair not in pairs_stats: pairs_stats[win_pair] = {"Очки": 0, "Игры": 0}
-        pairs_stats[win_pair]["Очки"] += int(game["win_points"])
+        pairs_stats[win_pair]["Очки"] += int(game.get("win_points", 0))
         pairs_stats[win_pair]["Игры"] += 1
 
         for p in win_team:
             if p in stats:
-                stats[p]["Очки"] += int(game["win_points"])
+                stats[p]["Очки"] += int(game.get("win_points", 0))
                 stats[p]["Игры"] += 1
-                if "Сокыр" in str(game["raw_status"]): stats[p]["Выигр. Сокыр"] += 1
-                elif "Теке" in str(game["raw_status"]): stats[p]["Выигр. Теке"] += 1
-                elif "Голый" in str(game["raw_status"]): stats[p]["Выигр. Голый"] += 1
-                if bool(game.get("eggs_happened", False)): stats[p]["Выигр. Яйца"] += 1
+                if "Сокыр" in str(game.get("raw_status", "")): stats[p]["Выигр. Сокыр"] += 1
+                elif "Теке" in str(game.get("raw_status", "")): stats[p]["Выигр. Теке"] += 1
+                elif "Голый" in str(game.get("raw_status", "")): stats[p]["Выигр. Голый"] += 1
+                if str(game.get("eggs_happened", "")).upper() in ["TRUE", "1"]: stats[p]["Выигр. Яйца"] += 1
                 
         for p in loss_team:
             if p in stats: 
                 stats[p]["Игры"] += 1
-                if "Сокыр" in str(game["raw_status"]): stats[p]["Проигр. Сокыр"] += 1
-                elif "Теке" in str(game["raw_status"]): stats[p]["Проигр. Теке"] += 1
-                elif "Голый" in str(game["raw_status"]): stats[p]["Проигр. Голый"] += 1
-                if bool(game.get("eggs_happened", False)): stats[p]["Проигр. Яйца"] += 1
+                if "Сокыр" in str(game.get("raw_status", "")): stats[p]["Проигр. Сокыр"] += 1
+                elif "Теке" in str(game.get("raw_status", "")): stats[p]["Проигр. Теке"] += 1
+                elif "Голый" in str(game.get("raw_status", "")): stats[p]["Проигр. Голый"] += 1
+                if str(game.get("eggs_happened", "")).upper() in ["TRUE", "1"]: stats[p]["Проигр. Яйца"] += 1
     except:
         continue
 
@@ -130,6 +141,7 @@ for player in stats:
         stats[player]["Средний балл"] = round(stats[player]["Очки"] / stats[player]["Игры"], 2)
 
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
+# Ровно 12 колонок для соответствия датафрейму
 df_leaderboard.columns = [
     "Игрок", "Всего очков", "Сыграно игр", "Средний балл", 
     "Выигр. Сокыр", "Проигр. Сокыр", 
@@ -152,9 +164,7 @@ st.dataframe(df_main, use_container_width=True)
 st.markdown("---")
 
 # Вкладки аналитики
-tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
-    "📝 История игр", "🚀 Раздали", "📉 Словленные", "👥 Связки"
-])
+tab_history, tab_pairs = st.tabs(["📝 История игр", "👥 Рейтинг связок"])
 
 with tab_history:
     if st.session_state.games:
@@ -170,6 +180,15 @@ with tab_history:
         st.dataframe(pd.DataFrame(log_data)[::-1], use_container_width=True, hide_index=True)
     else:
         st.info("В облаке пока нет записанных игр.")
+
+with tab_pairs:
+    if pairs_stats:
+        pairs_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Игры"], 2)} for k, v in pairs_stats.items()]
+        df_p = pd.DataFrame(pairs_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
+        df_p.index = df_p.index + 1
+        st.dataframe(df_p, use_container_width=True)
+    else:
+        st.info("Матчей пар пока нет.")
 
 # Регистрация игры (Форма)
 col_bottom1, col_bottom2 = st.columns([1, 1])
@@ -194,20 +213,22 @@ with col_bottom1:
             else:
                 win_pts, loss_pts = calculate_match_points(status, eggs)
                 
-                # Подготовка новой строки для добавления в Google Sheets
                 new_game = pd.DataFrame([{
                     "win_team": f"{p1}, {p2}",
                     "loss_team": f"{p3}, {p4}",
-                    "win_points": win_pts,
-                    "loss_points": loss_pts,
-                    "raw_status": status,
+                    "win_points": int(win_pts),
+                    "loss_points": int(loss_pts),
+                    "raw_status": str(status),
                     "eggs_happened": str(eggs).upper(),
                     "status": f"{status} {'+ Яйца' if eggs else ''}",
-                    "timestamp": time.time()
+                    "timestamp": float(time.time())
                 }])
                 
-                # Дописываем строку в таблицу 'games'
-                df_existing_games = conn.read(worksheet="games", ttl=0)
+                try:
+                    df_existing_games = conn.read(worksheet="games", ttl=0)
+                except:
+                    df_existing_games = pd.DataFrame()
+                    
                 df_updated_games = pd.concat([df_existing_games, new_game], ignore_index=True)
                 conn.update(worksheet="games", data=df_updated_games)
                 
@@ -224,7 +245,11 @@ with col_bottom2:
             if match_password != "6666":
                 st.error("Пароль!")
             elif new_player.strip():
-                df_existing_p = conn.read(worksheet="players", ttl=0)
+                try:
+                    df_existing_p = conn.read(worksheet="players", ttl=0)
+                except:
+                    df_existing_p = pd.DataFrame(columns=["Имя"])
+                    
                 new_p_df = pd.DataFrame([{"Имя": new_player.strip()}])
                 df_updated_p = pd.concat([df_existing_p, new_p_df], ignore_index=True)
                 conn.update(worksheet="players", data=df_updated_p)

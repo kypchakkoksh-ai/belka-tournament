@@ -7,10 +7,6 @@ import time
 # Настройка страницы
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
-# --- ССЫЛКИ НА ТВОЮ ТАБЛИЦУ (ВСТАВЬ СВОИ) ---
-GSHEET_URL = "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ГУГЛ_ТАБЛИЦУ"
-WEB_APP_URL = "ВСТАВЬ_СЮДА_URL_ВЕБ_ПРИЛОЖЕНИЯ_ИЗ_APPS_SCRIPT"
-
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно + Читаемый текст) ---
 st.markdown("""
     <style>
@@ -25,20 +21,19 @@ st.markdown("""
     }
     [data-testid="stCheckbox"] label p { color: #ffffff !important; }
     
-    /* Стилизация кнопки сохранения — белый жирный текст */
+    /* Стилизация кнопки сохранения — БЕЛЫЙ текст на зеленом фоне */
     div.stButton > button {
         width: 100% !important;
-        background-color: #155d27 !important;
+        background-color: #1e7e34 !important;
         color: #ffffff !important;
         font-weight: 800 !important;
         font-size: 16px !important;
         border-radius: 8px !important;
         border: 2px solid #28a745 !important;
         padding: 0.6rem 1rem !important;
-        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
     div.stButton > button:hover { 
-        background-color: #1e7e34 !important; 
+        background-color: #218838 !important; 
         color: #ffffff !important;
     }
     
@@ -47,6 +42,14 @@ st.markdown("""
     hr { border-top: 1px solid #1e7e34 !important; }
     </style>
 """, unsafe_allow_html=True)
+
+# Получение скрытых настроек из Streamlit Secrets
+try:
+    GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    WEB_APP_URL = st.secrets["connections"]["gsheets"]["web_app_url"]
+except Exception:
+    st.error("⚠️ В настройках Streamlit Secrets не хватает ссылок на Google Таблицу или скрипт Apps Script!")
+    st.stop()
 
 DEFAULT_PLAYERS = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
 
@@ -83,7 +86,7 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 2, 0) if eggs else (base_points, 0)
 
-# --- ИНИЦИАЛИЗАЦИЯ И РАСЧЕТ СТАТИСТИКИ ---
+# --- РАСЧЕТ СТАТИСТИКИ ---
 stats = {p: {
     "Очки": 0, "Игры": 0, "Средний балл": 0.0, 
     "Выигр. Сокыр": 0, "Проигр. Сокыр": 0, 
@@ -100,13 +103,11 @@ for game in st.session_state.games:
         l_team = game.get("loss_team", [])
         if len(w_team) < 2 or len(l_team) < 2: continue
         
-        # Рейтинг связок
         win_pair = tuple(sorted(w_team))
         if win_pair not in pairs_stats: pairs_stats[win_pair] = {"Очки": 0, "Игры": 0}
         pairs_stats[win_pair]["Очки"] += int(game.get("win_points", 0))
         pairs_stats[win_pair]["Игры"] += 1
 
-        # Индивидуальная статистика
         raw_status = str(game.get("raw_status", ""))
         is_eggs = str(game.get("eggs_happened", "")).upper() in ["TRUE", "1", "ИСТИНА"]
 
@@ -136,7 +137,7 @@ for p in stats:
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
 df_leaderboard.columns = ["Игрок", "Всего очков", "Сыграно игр", "Средний балл", "Выигр. Сокыр", "Проигр. Сокыр", "Выигр. Теке", "Проигр. Теке", "Выигр. Голый", "Проигр. Голый", "Повесили Яйца", "Получили Яйца"]
 
-# === ОТРЕНДЕРИТЬ ЭКРАН ===
+# === ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ===
 st.title("🃏 Чемпионат по Белке")
 if st.button("🔄 Обновить данные"):
     st.cache_data.clear()
@@ -149,7 +150,7 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-# Вкладки доп. аналитики (ВСЕ НА МЕСТЕ)
+# Вкладки доп. аналитики
 tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📝 История игр", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
@@ -171,14 +172,14 @@ with tab_negative:
 
 with tab_pairs:
     if pairs_stats:
-        p_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Iгры"] if v["Игры"]>0 else 0, 2)} for k, v in pairs_stats.items()]
+        p_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Игры"] if v["Игры"]>0 else 0, 2)} for k, v in pairs_stats.items()]
         st.dataframe(pd.DataFrame(p_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]), use_container_width=True, hide_index=True)
     else:
         st.info("Матчей пар пока нет.")
 
 st.markdown("---")
 
-# Нижний блок: Форма и Управление составом
+# Нижний блок
 col_bottom1, col_bottom2 = st.columns([1, 1])
 
 with col_bottom1:
@@ -209,7 +210,7 @@ with col_bottom1:
                 }
                 response = requests.post(WEB_APP_URL, json=payload)
                 if response.status_code == 200:
-                    st.success("Результат намертво сохранен в Облаке!")
+                    st.success("Результат сохранен в Облаке!")
                     st.cache_data.clear()
                     time.sleep(1)
                     st.rerun()

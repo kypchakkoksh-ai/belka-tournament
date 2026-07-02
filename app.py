@@ -20,7 +20,7 @@ st.markdown("""
     }
     [data-testid="stCheckbox"] label p { color: #ffffff !important; }
     
-    /* Стилизация кнопки сохранения — БЕЛЫЙ текст */
+    /* Стилизация кнопок действия — БЕЛЫЙ текст */
     div.stButton > button {
         width: 100% !important;
         background-color: #1e7e34 !important;
@@ -36,6 +36,13 @@ st.markdown("""
         color: #ffffff !important;
     }
     
+    /* Красная кнопка для удаления */
+    div[data-testid="column"] blockquote + div stButton button, 
+    .stButton button:contains("УДАЛИТЬ") {
+        background-color: #b21f2d !important;
+        border: 2px solid #dc3545 !important;
+    }
+    
     button[data-baseweb="tab"] { font-size: 15px !important; font-weight: bold !important; color: #a3cfbb !important; }
     button[aria-selected="true"] { color: #ffffff !important; border-bottom-color: #28a745 !important; }
     hr { border-top: 1px solid #1e7e34 !important; }
@@ -47,7 +54,6 @@ st.markdown("""
 def get_gspread_client():
     try:
         credentials = dict(st.secrets["gcp_service_account"])
-        # Заменяем экранирование переноса строк в закрытом ключе, если необходимо
         if "private_key" in credentials:
             credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
         gc = gspread.service_account_from_dict(credentials)
@@ -70,8 +76,14 @@ def load_data_from_sheets():
         # Загрузка игроков
         try:
             worksheet_p = sh.worksheet("players")
-            df_p = pd.DataFrame(worksheet_p.get_all_records())
-            players = df_p['Имя'].dropna().astype(str).tolist() if not df_p.empty and 'Имя' in df_p.columns else DEFAULT_PLAYERS.copy()
+            records_p = worksheet_p.get_all_records()
+            if records_p and 'Имя' in records_p[0]:
+                df_p = pd.DataFrame(records_p)
+                players = df_p['Имя'].dropna().astype(str).tolist()
+            else:
+                # Если первая строка не заголовок, берем весь столбец
+                players = [x for x in worksheet_p.col_values(1) if x and x != 'Имя']
+            if not players: players = DEFAULT_PLAYERS.copy()
         except:
             players = DEFAULT_PLAYERS.copy()
             
@@ -167,6 +179,7 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
+# Вкладки доп. аналитики с сортировкой от большего к меньшему
 tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📝 История игр", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
@@ -179,17 +192,23 @@ with tab_history:
         st.info("История пуста.")
 
 with tab_positive:
-    df_pos = df_leaderboard[["Игрок", "Выигр. Сокыр", "Выигр. Теке", "Выигр. Голый", "Повесили Яйца"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True)
+    # Сортировка по сумме всех ключевых победных достижений от большего к меньшему
+    df_pos = df_leaderboard[["Игрок", "Выигр. Сокыр", "Выигр. Теке", "Выигр. Голый", "Повесили Яйца"]].sort_values(by=["Выигр. Сокыр", "Выигр. Теке", "Повесили Яйца"], ascending=False).reset_index(drop=True)
+    df_pos.index = df_pos.index + 1
     st.dataframe(df_pos, use_container_width=True)
 
 with tab_negative:
-    df_neg = df_leaderboard[["Игрок", "Проигр. Сокыр", "Проигр. Теке", "Проигр. Голый", "Получили Яйца"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True)
+    # Сортировка проигрышей от большего к меньшему
+    df_neg = df_leaderboard[["Игрок", "Проигр. Сокыр", "Проигр. Теке", "Проигр. Голый", "Получили Яйца"]].sort_values(by=["Проигр. Сокыр", "Проигр. Теке", "Получили Яйца"], ascending=False).reset_index(drop=True)
+    df_neg.index = df_neg.index + 1
     st.dataframe(df_neg, use_container_width=True)
 
 with tab_pairs:
     if pairs_stats:
         p_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Игры"] if v["Игры"]>0 else 0, 2)} for k, v in pairs_stats.items()]
-        st.dataframe(pd.DataFrame(p_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]), use_container_width=True, hide_index=True)
+        df_p_sorted = pd.DataFrame(p_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]).reset_index(drop=True)
+        df_p_sorted.index = df_p_sorted.index + 1
+        st.dataframe(df_p_sorted, use_container_width=True)
     else:
         st.info("Матчей пар пока нет.")
 
@@ -199,7 +218,7 @@ col_bottom1, col_bottom2 = st.columns([1, 1])
 
 with col_bottom1:
     st.markdown("### ➕ Регистрация игры")
-    match_password = st.text_input("🔑 Пароль для сохранения:", type="password")
+    match_password = st.text_input("🔑 Пароль для управления/сохранения:", type="password")
 
     with st.form("match_form", clear_on_submit=True):
         p1 = st.selectbox("Победитель 1", st.session_state.players, index=0)
@@ -232,8 +251,36 @@ with col_bottom1:
                 except Exception as e:
                     st.error(f"Ошибка сохранения: {e}")
 
+    # --- КОРРЕКТИРОВКА ИГРЫ (УДАЛЕНИЕ ПОСЛЕДНЕЙ) ---
+    st.markdown("### 🛠️ Корректировка игр")
+    with st.expander("❌ Удалить последнюю сыгранную игру", expanded=False):
+        st.warning("Внимание! Это действие безвозвратно удалит самую последнюю строку из истории игр в Google Таблице.")
+        if st.button("УДАЛИТЬ ПОСЛЕДНИЙ МАТЧ"):
+            if match_password != "6666":
+                st.error("🔒 Введите пароль администратора выше!")
+            elif gc is None:
+                st.error("Нет подключения к Google Таблицам.")
+            else:
+                try:
+                    sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                    worksheet_g = sh.worksheet("games")
+                    # Получаем все строки, чтобы узнать длину
+                    all_rows = worksheet_g.get_all_values()
+                    if len(all_rows) > 1: # Чтобы не удалить шапку таблицы
+                        worksheet_g.delete_rows(len(all_rows))
+                        st.success("Последняя игра успешно стёрта из облака!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.info("Таблица матчей уже пуста (удалять нечего).")
+                except Exception as e:
+                    st.error(f"Ошибка при удалении: {e}")
+
 with col_bottom2:
     st.markdown("### ⚙️ Управление составом")
+    
+    # Добавление игрока
     with st.expander("➕ Добавить нового игрока в облако", expanded=True):
         new_player = st.text_input("Имя нового участника:")
         if st.button("ДОБАВИТЬ В БАЗУ"):
@@ -252,3 +299,30 @@ with col_bottom2:
                     st.rerun()
                 except Exception as e:
                     st.error(f"Ошибка добавления: {e}")
+
+    # Удаление игрока
+    with st.expander("🗑️ Удалить игрока из базы", expanded=False):
+        player_to_delete = st.selectbox("Выберите игрока для удаления", st.session_state.players)
+        if st.button("🚨 УДАЛИТЬ ИГРОКА ИЗ СИСТЕМЫ"):
+            if match_password != "6666":
+                st.error("🔒 Введите верный пароль выше!")
+            elif gc is None:
+                st.error("Нет подключения к Google Таблицам.")
+            else:
+                try:
+                    sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                    worksheet_p = sh.worksheet("players")
+                    col_values = worksheet_p.col_values(1)
+                    
+                    if player_to_delete in col_values:
+                        # Находим индекс строки (в gspread индексы начинаются с 1)
+                        row_idx = col_values.index(player_to_delete) + 1
+                        worksheet_p.delete_rows(row_idx)
+                        st.success(f"Игрок {player_to_delete} успешно удален из базы!")
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Игрок не найден в таблице.")
+                except Exception as e:
+                    st.error(f"Ошибка удаления: {e}")

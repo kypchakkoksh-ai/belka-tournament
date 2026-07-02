@@ -8,12 +8,10 @@ import time
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
 # --- ССЫЛКИ НА ТВОЮ ТАБЛИЦУ (ВСТАВЬ СВОИ) ---
-# 1. Твоя обычная ссылка на Google Таблицу:
-GSHEET_URL = "https://docs.google.com/spreadsheets/d/18N2DacqDdIfwb6XHW0l-vxTeRZS8r1oVL687WOONMZ4/edit?usp=sharing"
-# 2. URL веб-приложения, который ты скопировал на Шаге 1 из Apps Script:
-WEB_APP_URL = "https://belka-tournament-mva9qn7a9t9mhztggwzgv7.streamlit.app/"
+GSHEET_URL = "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ГУГЛ_ТАБЛИЦУ"
+WEB_APP_URL = "ВСТАВЬ_СЮДА_URL_ВЕБ_ПРИЛОЖЕНИЯ_ИЗ_APPS_SCRIPT"
 
-# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС ---
+# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно + Читаемый текст) ---
 st.markdown("""
     <style>
     .stApp {
@@ -26,16 +24,25 @@ st.markdown("""
         font-weight: bold !important;
     }
     [data-testid="stCheckbox"] label p { color: #ffffff !important; }
+    
+    /* Стилизация кнопки сохранения — белый жирный текст */
     div.stButton > button {
         width: 100% !important;
-        background-color: #1e7e34 !important;
-        color: white !important;
-        font-weight: bold !important;
+        background-color: #155d27 !important;
+        color: #ffffff !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
         border-radius: 8px !important;
-        border: 1px solid #28a745 !important;
+        border: 2px solid #28a745 !important;
+        padding: 0.6rem 1rem !important;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
     }
-    div.stButton > button:hover { background-color: #218838 !important; }
-    button[data-baseweb="tab"] { font-size: 16px !important; font-weight: bold !important; color: #a3cfbb !important; }
+    div.stButton > button:hover { 
+        background-color: #1e7e34 !important; 
+        color: #ffffff !important;
+    }
+    
+    button[data-baseweb="tab"] { font-size: 15px !important; font-weight: bold !important; color: #a3cfbb !important; }
     button[aria-selected="true"] { color: #ffffff !important; border-bottom-color: #28a745 !important; }
     hr { border-top: 1px solid #1e7e34 !important; }
     </style>
@@ -46,7 +53,6 @@ DEFAULT_PLAYERS = ["Данияр", "Азирхан", "Талгат", "Елдар
 @st.cache_data(ttl=2)
 def load_data_from_sheets():
     try:
-        # Быстрое чтение открытых листов по CSV-экспорту
         base_link = GSHEET_URL.split('/edit')[0]
         players_url = f"{base_link}/gviz/tq?tqx=out:csv&sheet=players"
         games_url = f"{base_link}/gviz/tq?tqx=out:csv&sheet=games"
@@ -66,7 +72,7 @@ def load_data_from_sheets():
     except Exception:
         return DEFAULT_PLAYERS.copy(), []
 
-# Чтение данных
+# Загрузка актуальных данных
 st.session_state.players, st.session_state.games = load_data_from_sheets()
 
 POINTS_DICT = {
@@ -77,36 +83,49 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 2, 0) if eggs else (base_points, 0)
 
-# --- МАТЕМАТИКА СТАТИСТИКИ ---
-stats = {p: {"Очки": 0, "Игры": 0, "Средний балл": 0.0, "Выигр. Сокыр": 0, "Проигр. Сокыр": 0, "Выигр. Теке": 0, "Проигр. Теке": 0, "Выигр. Голый": 0, "Проигр. Голый": 0, "Выигр. Яйца": 0, "Проигр. Яйца": 0} for p in st.session_state.players}
+# --- ИНИЦИАЛИЗАЦИЯ И РАСЧЕТ СТАТИСТИКИ ---
+stats = {p: {
+    "Очки": 0, "Игры": 0, "Средний балл": 0.0, 
+    "Выигр. Сокыр": 0, "Проигр. Сокыр": 0, 
+    "Выигр. Теке": 0, "Проигр. Теке": 0, 
+    "Выигр. Голый": 0, "Проигр. Голый": 0, 
+    "Выигр. Яйца": 0, "Проигр. Яйца": 0
+} for p in st.session_state.players}
+
 pairs_stats = {}
 
 for game in st.session_state.games:
     try:
-        w_team, l_team = game.get("win_team", []), game.get("loss_team", [])
+        w_team = game.get("win_team", [])
+        l_team = game.get("loss_team", [])
         if len(w_team) < 2 or len(l_team) < 2: continue
         
+        # Рейтинг связок
         win_pair = tuple(sorted(w_team))
         if win_pair not in pairs_stats: pairs_stats[win_pair] = {"Очки": 0, "Игры": 0}
         pairs_stats[win_pair]["Очки"] += int(game.get("win_points", 0))
         pairs_stats[win_pair]["Игры"] += 1
 
+        # Индивидуальная статистика
+        raw_status = str(game.get("raw_status", ""))
+        is_eggs = str(game.get("eggs_happened", "")).upper() in ["TRUE", "1", "ИСТИНА"]
+
         for p in w_team:
             if p in stats:
                 stats[p]["Очки"] += int(game.get("win_points", 0))
                 stats[p]["Игры"] += 1
-                if "Сокыр" in str(game.get("raw_status")): stats[p]["Выигр. Сокыр"] += 1
-                elif "Теке" in str(game.get("raw_status")): stats[p]["Выигр. Теке"] += 1
-                elif "Голый" in str(game.get("raw_status")): stats[p]["Выигр. Голый"] += 1
-                if str(game.get("eggs_happened")).upper() in ["TRUE", "1"]: stats[p]["Выигр. Яйца"] += 1
+                if "Сокыр" in raw_status: stats[p]["Выигр. Сокыр"] += 1
+                elif "Теке" in raw_status: stats[p]["Выигр. Теке"] += 1
+                elif "Голый" in raw_status: stats[p]["Выигр. Голый"] += 1
+                if is_eggs: stats[p]["Выигр. Яйца"] += 1
                 
         for p in l_team:
             if p in stats:
                 stats[p]["Игры"] += 1
-                if "Сокыр" in str(game.get("raw_status")): stats[p]["Проигр. Сокыр"] += 1
-                elif "Теке" in str(game.get("raw_status")): stats[p]["Проигр. Теке"] += 1
-                elif "Голый" in str(game.get("raw_status")): stats[p]["Проигр. Голый"] += 1
-                if str(game.get("eggs_happened")).upper() in ["TRUE", "1"]: stats[p]["Проигр. Яйца"] += 1
+                if "Сокыр" in raw_status: stats[p]["Проигр. Сокыр"] += 1
+                elif "Теке" in raw_status: stats[p]["Проигр. Теке"] += 1
+                elif "Голый" in raw_status: stats[p]["Проигр. Голый"] += 1
+                if is_eggs: stats[p]["Проигр. Яйца"] += 1
     except:
         continue
 
@@ -130,7 +149,11 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-tab_history, tab_pairs = st.tabs(["📝 История игр", "👥 Рейтинг связок"])
+# Вкладки доп. аналитики (ВСЕ НА МЕСТЕ)
+tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
+    "📝 История игр", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
+])
+
 with tab_history:
     if st.session_state.games:
         log_data = [{"Матч №": i, "Победители": f"{g['win_team'][0]}, {g['win_team'][1]}", "Проигравшие": f"{g['loss_team'][0]}, {g['loss_team'][1]}", "Статус": g.get("status"), "Очки": f"+{g['win_points']}"} for i, g in enumerate(st.session_state.games, 1)]
@@ -138,43 +161,75 @@ with tab_history:
     else:
         st.info("История пуста.")
 
+with tab_positive:
+    df_pos = df_leaderboard[["Игрок", "Выигр. Сокыр", "Выигр. Теке", "Выигр. Голый", "Повесили Яйца"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True)
+    st.dataframe(df_pos, use_container_width=True)
+
+with tab_negative:
+    df_neg = df_leaderboard[["Игрок", "Проигр. Сокыр", "Проигр. Теке", "Проигр. Голый", "Получили Яйца"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True)
+    st.dataframe(df_neg, use_container_width=True)
+
 with tab_pairs:
     if pairs_stats:
-        p_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Игры"], 2)} for k, v in pairs_stats.items()]
+        p_list = [{"Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Средний балл": round(v["Очки"] / v["Iгры"] if v["Игры"]>0 else 0, 2)} for k, v in pairs_stats.items()]
         st.dataframe(pd.DataFrame(p_list).sort_values(by=["Очки", "Средний балл"], ascending=[False, False]), use_container_width=True, hide_index=True)
+    else:
+        st.info("Матчей пар пока нет.")
 
-# Форма отправки матча
-st.markdown("### ➕ Регистрация игры")
-match_password = st.text_input("🔑 Пароль:", type="password")
+st.markdown("---")
 
-with st.form("match_form", clear_on_submit=True):
-    p1 = st.selectbox("Победитель 1", st.session_state.players, index=0)
-    p2 = st.selectbox("Победитель 2", st.session_state.players, index=1)
-    p3 = st.selectbox("Проигравший 1", st.session_state.players, index=2)
-    p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
-    status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
-    eggs = st.checkbox("Повесили «Яйца» (+2 очка)")
-    
-    if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
-        if match_password != "6666":
-            st.error("🔒 Неверный пароль!")
-        elif len({p1, p2, p3, p4}) < 4:
-            st.error("Ошибка: Участники дублируются!")
-        else:
-            win_pts, loss_pts = calculate_match_points(status, eggs)
-            payload = {
-                "action": "add_game",
-                "win_team": f"{p1}, {p2}", "loss_team": f"{p3}, {p4}",
-                "win_points": int(win_pts), "loss_points": int(loss_pts),
-                "raw_status": str(status), "eggs_happened": str(eggs).upper(),
-                "status": f"{status} {'+ Яйца' if eggs else ''}", "timestamp": float(time.time())
-            }
-            # Отправка напрямую в Google Таблицу через наш скрипт
-            response = requests.post(WEB_APP_URL, json=payload)
-            if response.status_code == 200:
-                st.success("Результат намертво сохранен в Облаке!")
-                st.cache_data.clear()
-                time.sleep(1)
-                st.rerun()
+# Нижний блок: Форма и Управление составом
+col_bottom1, col_bottom2 = st.columns([1, 1])
+
+with col_bottom1:
+    st.markdown("### ➕ Регистрация игры")
+    match_password = st.text_input("🔑 Пароль для сохранения:", type="password")
+
+    with st.form("match_form", clear_on_submit=True):
+        p1 = st.selectbox("Победитель 1", st.session_state.players, index=0)
+        p2 = st.selectbox("Победитель 2", st.session_state.players, index=1)
+        p3 = st.selectbox("Проигравший 1", st.session_state.players, index=2)
+        p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
+        status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
+        eggs = st.checkbox("Повесили «Яйца» (+2 очка)")
+        
+        if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
+            if match_password != "6666":
+                st.error("🔒 Неверный пароль!")
+            elif len({p1, p2, p3, p4}) < 4:
+                st.error("Ошибка: Участники дублируются!")
             else:
-                st.error("Ошибка при отправке в облако.")
+                win_pts, loss_pts = calculate_match_points(status, eggs)
+                payload = {
+                    "action": "add_game",
+                    "win_team": f"{p1}, {p2}", "loss_team": f"{p3}, {p4}",
+                    "win_points": int(win_pts), "loss_points": int(loss_pts),
+                    "raw_status": str(status), "eggs_happened": str(eggs).upper(),
+                    "status": f"{status} {'+ Яйца' if eggs else ''}", "timestamp": float(time.time())
+                }
+                response = requests.post(WEB_APP_URL, json=payload)
+                if response.status_code == 200:
+                    st.success("Результат намертво сохранен в Облаке!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Ошибка сети при отправке в Google Таблицу.")
+
+with col_bottom2:
+    st.markdown("### ⚙️ Управление составом")
+    with st.expander("➕ Добавить нового игрока в облако", expanded=True):
+        new_player = st.text_input("Имя нового участника:")
+        if st.button("ДОБАВИТЬ В БАЗУ"):
+            if match_password != "6666":
+                st.error("🔒 Введите верный пароль выше!")
+            elif new_player.strip():
+                payload = {"action": "add_player", "name": new_player.strip()}
+                response = requests.post(WEB_APP_URL, json=payload)
+                if response.status_code == 200:
+                    st.success(f"Игрок {new_player} добавлен!")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Ошибка добавления.")

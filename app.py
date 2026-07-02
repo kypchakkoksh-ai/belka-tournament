@@ -138,17 +138,31 @@ for game in st.session_state.games:
         l_team = game.get("loss_team", [])
         if len(w_team) < 2 or len(l_team) < 2: continue
         
+        win_pts = int(game.get("win_points", 0))
+        loss_pts = int(game.get("loss_points", 0))
+
+        # --- Статистика связок (Учитываем И победы, И проигрыши) ---
         win_pair = tuple(sorted(w_team))
+        loss_pair = tuple(sorted(l_team))
+
+        # Если пара выиграла
         if win_pair not in pairs_stats: pairs_stats[win_pair] = {"Очки": 0, "Игры": 0}
-        pairs_stats[win_pair]["Очки"] += int(game.get("win_points", 0))
+        pairs_stats[win_pair]["Очки"] += win_pts
         pairs_stats[win_pair]["Игры"] += 1
 
+        # Если пара проиграла
+        if loss_pair not in pairs_stats: pairs_stats[loss_pair] = {"Очки": 0, "Игры": 0}
+        pairs_stats[loss_pair]["Очки"] += loss_pts
+        pairs_stats[loss_pair]["Игры"] += 1
+
+
+        # --- Индивидуальная статистика ---
         raw_status = str(game.get("raw_status", ""))
         is_eggs = str(game.get("eggs_happened", "")).upper() in ["TRUE", "1", "ИСТИНА"]
 
         for p in w_team:
             if p in stats:
-                stats[p]["Очки"] += int(game.get("win_points", 0))
+                stats[p]["Очки"] += win_pts
                 stats[p]["Игры"] += 1
                 if "Сокыр" in raw_status: stats[p]["Выигр. Сокыр"] += 1
                 elif "Теке" in raw_status: stats[p]["Выигр. Теке"] += 1
@@ -157,6 +171,7 @@ for game in st.session_state.games:
                 
         for p in l_team:
             if p in stats:
+                stats[p]["Очки"] += loss_pts  # Учитываем очки за проигрыш, если они есть
                 stats[p]["Игры"] += 1
                 if "Сокыр" in raw_status: stats[p]["Проигр. Сокыр"] += 1
                 elif "Теке" in raw_status: stats[p]["Проигр. Теке"] += 1

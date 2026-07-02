@@ -6,7 +6,7 @@ import time
 # Настройка страницы
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
-# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно + Читаемый текст) ---
+# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно + Контрастная Желтая Кнопка) ---
 st.markdown("""
     <style>
     .stApp {
@@ -20,26 +20,33 @@ st.markdown("""
     }
     [data-testid="stCheckbox"] label p { color: #ffffff !important; }
     
-    /* Стилизация кнопок действия — БЕЛЫЙ текст */
-    div.stButton > button {
+    /* Мощная Желтая кнопка сохранения с черным жирным текстом */
+    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
-        background-color: #1e7e34 !important;
-        color: #ffffff !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
+        background-color: #ffcc00 !important;
+        color: #000000 !important;
+        font-weight: 900 !important;
+        font-size: 17px !important;
         border-radius: 8px !important;
-        border: 2px solid #28a745 !important;
+        border: 2px solid #ffee55 !important;
         padding: 0.6rem 1rem !important;
     }
-    div.stButton > button:hover { 
-        background-color: #218838 !important; 
-        color: #ffffff !important;
+    div.stForm stButton > button:hover, div.stButton > button:contains("СОХРАНИТЬ"):hover { 
+        background-color: #e6b800 !important; 
+        color: #000000 !important;
     }
     
-    /* Красная кнопка для удаления */
-    div[data-testid="column"] blockquote + div stButton button, 
-    .stButton button:contains("УДАЛИТЬ") {
+    /* Стандартные кнопки действия (зеленые) */
+    div.stButton > button {
+        background-color: #1e7e34 !important;
+        color: #ffffff !important;
+        font-weight: bold !important;
+    }
+    
+    /* Красные кнопки для опасных удалений */
+    button:contains("УДАЛИТЬ") {
         background-color: #b21f2d !important;
+        color: #ffffff !important;
         border: 2px solid #dc3545 !important;
     }
     
@@ -81,7 +88,6 @@ def load_data_from_sheets():
                 df_p = pd.DataFrame(records_p)
                 players = df_p['Имя'].dropna().astype(str).tolist()
             else:
-                # Если первая строка не заголовок, берем весь столбец
                 players = [x for x in worksheet_p.col_values(1) if x and x != 'Имя']
             if not players: players = DEFAULT_PLAYERS.copy()
         except:
@@ -179,7 +185,7 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-# Вкладки доп. аналитики с сортировкой от большего к меньшему
+# Вкладки доп. аналитики
 tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📝 История игр", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
@@ -192,16 +198,46 @@ with tab_history:
         st.info("История пуста.")
 
 with tab_positive:
-    # Сортировка по сумме всех ключевых победных достижений от большего к меньшему
-    df_pos = df_leaderboard[["Игрок", "Выигр. Сокыр", "Выигр. Теке", "Выигр. Голый", "Повесили Яйца"]].sort_values(by=["Выигр. Сокыр", "Выигр. Теке", "Повесили Яйца"], ascending=False).reset_index(drop=True)
-    df_pos.index = df_pos.index + 1
-    st.dataframe(df_pos, use_container_width=True)
+    st.markdown("#### Подробная статистика победных достижений")
+    sub_tab1, sub_tab2, sub_tab3, sub_tab4 = st.tabs(["👁️ Сокыр", "🐐 Теке", "🪵 Голый", "🥚 Повесили Яйца"])
+    
+    with sub_tab1:
+        df_p1 = df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True)
+        df_p1.index = df_p1.index + 1
+        st.dataframe(df_p1, use_container_width=True)
+    with sub_tab2:
+        df_p2 = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
+        df_p2.index = df_p2.index + 1
+        st.dataframe(df_p2, use_container_width=True)
+    with sub_tab3:
+        df_p3 = df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True)
+        df_p3.index = df_p3.index + 1
+        st.dataframe(df_p3, use_container_width=True)
+    with sub_tab4:
+        df_p4 = df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True)
+        df_p4.index = df_p4.index + 1
+        st.dataframe(df_p4, use_container_width=True)
 
 with tab_negative:
-    # Сортировка проигрышей от большего к меньшему
-    df_neg = df_leaderboard[["Игрок", "Проигр. Сокыр", "Проигр. Теке", "Проигр. Голый", "Получили Яйца"]].sort_values(by=["Проигр. Сокыр", "Проигр. Теке", "Получили Яйца"], ascending=False).reset_index(drop=True)
-    df_neg.index = df_neg.index + 1
-    st.dataframe(df_neg, use_container_width=True)
+    st.markdown("#### Подробная статистика по проигранным сдачам")
+    sub_neg1, sub_neg2, sub_neg3, sub_neg4 = st.tabs(["👁️ Словлен Сокыр", "🐐 Словлен Теке", "🪵 Словлен Голый", "🥚 Получили Яйца"])
+    
+    with sub_neg1:
+        df_n1 = df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True)
+        df_n1.index = df_n1.index + 1
+        st.dataframe(df_n1, use_container_width=True)
+    with sub_neg2:
+        df_n2 = df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True)
+        df_n2.index = df_n2.index + 1
+        st.dataframe(df_n2, use_container_width=True)
+    with sub_neg3:
+        df_n3 = df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True)
+        df_n3.index = df_n3.index + 1
+        st.dataframe(df_n3, use_container_width=True)
+    with sub_neg4:
+        df_n4 = df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True)
+        df_n4.index = df_n4.index + 1
+        st.dataframe(df_n4, use_container_width=True)
 
 with tab_pairs:
     if pairs_stats:
@@ -218,7 +254,7 @@ col_bottom1, col_bottom2 = st.columns([1, 1])
 
 with col_bottom1:
     st.markdown("### ➕ Регистрация игры")
-    match_password = st.text_input("🔑 Пароль для управления/сохранения:", type="password")
+    match_password = st.text_input("🔑 Пароль администратора:", type="password")
 
     with st.form("match_form", clear_on_submit=True):
         p1 = st.selectbox("Победитель 1", st.session_state.players, index=0)
@@ -228,13 +264,14 @@ with col_bottom1:
         status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
         eggs = st.checkbox("Повесили «Яйца» (+2 очка)")
         
+        # Кнопка теперь сочно-желтая с жирным черным шрифтом
         if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
             if match_password != "6666":
                 st.error("🔒 Неверный пароль!")
             elif len({p1, p2, p3, p4}) < 4:
                 st.error("Ошибка: Участники дублируются!")
             elif gc is None:
-                st.error("Ошибка: Подключение к Google Таблицам не настроено.")
+                st.error("Ошибка: Подключение не настроено.")
             else:
                 win_pts, loss_pts = calculate_match_points(status, eggs)
                 try:
@@ -251,31 +288,39 @@ with col_bottom1:
                 except Exception as e:
                     st.error(f"Ошибка сохранения: {e}")
 
-    # --- КОРРЕКТИРОВКА ИГРЫ (УДАЛЕНИЕ ПОСЛЕДНЕЙ) ---
+    # --- УЛУЧШЕННАЯ КОРРЕКТИРОВКА ЛЮБОЙ ИГРЫ ---
     st.markdown("### 🛠️ Корректировка игр")
-    with st.expander("❌ Удалить последнюю сыгранную игру", expanded=False):
-        st.warning("Внимание! Это действие безвозвратно удалит самую последнюю строку из истории игр в Google Таблице.")
-        if st.button("УДАЛИТЬ ПОСЛЕДНИЙ МАТЧ"):
-            if match_password != "6666":
-                st.error("🔒 Введите пароль администратора выше!")
-            elif gc is None:
-                st.error("Нет подключения к Google Таблицам.")
-            else:
-                try:
-                    sh = gc.open_by_url(st.secrets["spreadsheet_url"])
-                    worksheet_g = sh.worksheet("games")
-                    # Получаем все строки, чтобы узнать длину
-                    all_rows = worksheet_g.get_all_values()
-                    if len(all_rows) > 1: # Чтобы не удалить шапку таблицы
-                        worksheet_g.delete_rows(len(all_rows))
-                        st.success("Последняя игра успешно стёрта из облака!")
+    with st.expander("❌ Удалить конкретную игру по номеру", expanded=False):
+        if st.session_state.games:
+            game_numbers = list(range(1, len(st.session_state.games) + 1))
+            selected_game_num = st.selectbox("Выберите номер матча для удаления из истории:", game_numbers)
+            
+            # Показываем инфо о выбранном матче для проверки
+            g_idx = selected_game_num - 1
+            game_info = st.session_state.games[g_idx]
+            st.info(f"**Матч №{selected_game_num}:** Победители: {', '.join(game_info['win_team'])} | Проигравшие: {', '.join(game_info['loss_team'])} | Статус: {game_info.get('status')}")
+            
+            if st.button("УДАЛИТЬ ВЫБРАННЫЙ МАТЧ"):
+                if match_password != "6666":
+                    st.error("🔒 Введите пароль администратора выше!")
+                elif gc is None:
+                    st.error("Нет подключения к Google Таблицам.")
+                else:
+                    try:
+                        sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                        worksheet_g = sh.worksheet("games")
+                        # Индекс строки в таблице с учетом шапки (строка 1 - шапка, значит матч №1 - это строка 2)
+                        row_to_delete = selected_game_num + 1
+                        worksheet_g.delete_rows(row_to_delete)
+                        
+                        st.success(f"Матч №{selected_game_num} успешно стерт из базы!")
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
-                    else:
-                        st.info("Таблица матчей уже пуста (удалять нечего).")
-                except Exception as e:
-                    st.error(f"Ошибка при удалении: {e}")
+                    except Exception as e:
+                        st.error(f"Ошибка при удалении строки: {e}")
+        else:
+            st.info("История матчей пуста, удалять нечего.")
 
 with col_bottom2:
     st.markdown("### ⚙️ Управление составом")
@@ -315,7 +360,6 @@ with col_bottom2:
                     col_values = worksheet_p.col_values(1)
                     
                     if player_to_delete in col_values:
-                        # Находим индекс строки (в gspread индексы начинаются с 1)
                         row_idx = col_values.index(player_to_delete) + 1
                         worksheet_p.delete_rows(row_idx)
                         st.success(f"Игрок {player_to_delete} успешно удален из базы!")

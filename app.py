@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
+from streamlit_gsheets import GSheetsConnection
 import time
 
-# Настройка страницы: дефолтный dark mode и заголовок
+# Настройка страницы
 st.set_page_config(page_title="Чемпионат по Белке", layout="wide", page_icon="🃏")
 
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Зеленое сукно) ---
@@ -41,43 +42,35 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Укажите здесь URL созданной вами Google Таблицы
-# В будущем идеальный вариант — убрать ссылку в st.secrets
-GSHEET_URL = "ВСТАВЬТЕ_СЮДА_ВАШУ_ССЫЛКУ_НА_GOOGLE_ТАБЛИЦУ"
+# Инициализация подключения к Google Sheets через Secrets
+conn = st.connection("gsheets", type=GSheetsConnection)
 
-@st.cache_data(ttl=10)
-def load_data_from_sheets():
+def load_data():
     try:
-        # Чтение данных из Google Sheets с помощью pandas напрямую (если таблица открыта по ссылке)
-        players_url = GSHEET_URL.replace('/edit?usp=sharing', '/gviz/tq?tqx=out:csv&sheet=players')
-        games_url = GSHEET_URL.replace('/edit?usp=sharing', '/gviz/tq?tqx=out:csv&sheet=games')
+        # Читаем данные с листов 'players' и 'games'
+        df_p = conn.read(worksheet="players", ttl=5)
+        df_g = conn.read(worksheet="games", ttl=5)
         
-        df_p = pd.read_csv(players_url)
-        df_g = pd.read_csv(games_url)
+        players = df_p['Имя'].dropna().tolist() if not df_p.empty and 'Имя' in df_p.columns else []
+        games = df_g.to_dict(orient='records') if not df_g.empty else []
         
-        players = df_p['Имя'].dropna().tolist()
-        games = df_g.to_dict(orient='records')
-        
-        # Парсинг строк обратно в списки для логики пар игроков
+        # Превращаем строки с игроками обратно в списки для логики пар
         for g in games:
-            if isinstance(g['win_team'], str):
+            if isinstance(g.get('win_team'), str):
                 g['win_team'] = [x.strip() for x in g['win_team'].split(',')]
-            if isinstance(g['loss_team'], str):
+            if isinstance(g.get('loss_team'), str):
                 g['loss_team'] = [x.strip() for x in g['loss_team'].split(',')]
                 
+        if not players:
+            players = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
+            
         return players, games
     except Exception as e:
-        # Дефолтный список, если таблица еще пустая или недоступна
-        default_players = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
-        return default_players, []
+        # Резервный вариант, если таблица еще совсем пустая
+        return ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"], []
 
-# Инициализация сессии
-if "players" not in st.session_state or "games" not in st.session_state:
-    st.session_state.players, st.session_state.games = load_data_from_sheets()
-
-# Примечание: Для полноценной ЗАПИСИ в Google Sheets в Streamlit Cloud 
-# лучше всего использовать st.connection("gsheets", type=GSheetsConnection).
-# Ниже приведена базовая структура аналитики, которая теперь защищена от удаления файлов.
+# Загрузка актуальных данных в сессию
+st.session_state.players, st.session_state.games = load_data()
 
 POINTS_DICT = {
     "Сокыр (24 очка)": 24,
@@ -88,10 +81,9 @@ POINTS_DICT = {
 
 def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
-    additional = 2 if eggs else 0
-    return base_points + additional, 0
+    return (base_points + 2, 0) if eggs else (base_points, 0)
 
-# --- СБОР РАСШИРЕННОЙ СТАТИСТИКИ (Аналогично вашей логике) ---
+# --- РАСЧЕТ СТАТИСТИКИ ИЗ ОБЛАКА ---
 stats = {
     player: {
         "Очки": 0, "Игры": 0, "Средний балл": 0.0, 
@@ -105,27 +97,31 @@ pairs_stats = {}
 
 for game in st.session_state.games:
     try:
-        win_pair = tuple(sorted(game["win_team"]))
+        win_team = game.get("win_team", [])
+        loss_team = game.get("loss_team", [])
+        if len(win_team) < 2 or len(loss_team) < 2: continue
+        
+        win_pair = tuple(sorted(win_team))
         if win_pair not in pairs_stats: pairs_stats[win_pair] = {"Очки": 0, "Игры": 0}
-        pairs_stats[win_pair]["Очки"] += game["win_points"]
+        pairs_stats[win_pair]["Очки"] += int(game["win_points"])
         pairs_stats[win_pair]["Игры"] += 1
 
-        for p in game["win_team"]:
+        for p in win_team:
             if p in stats:
-                stats[p]["Очки"] += game["win_points"]
+                stats[p]["Очки"] += int(game["win_points"])
                 stats[p]["Игры"] += 1
                 if "Сокыр" in str(game["raw_status"]): stats[p]["Выигр. Сокыр"] += 1
                 elif "Теке" in str(game["raw_status"]): stats[p]["Выигр. Теке"] += 1
                 elif "Голый" in str(game["raw_status"]): stats[p]["Выигр. Голый"] += 1
-                if game.get("eggs_happened", False): stats[p]["Выигр. Яйца"] += 1
+                if bool(game.get("eggs_happened", False)): stats[p]["Выигр. Яйца"] += 1
                 
-        for p in game["loss_team"]:
+        for p in loss_team:
             if p in stats: 
                 stats[p]["Игры"] += 1
                 if "Сокыр" in str(game["raw_status"]): stats[p]["Проигр. Сокыр"] += 1
                 elif "Теке" in str(game["raw_status"]): stats[p]["Проигр. Теке"] += 1
                 elif "Голый" in str(game["raw_status"]): stats[p]["Проигр. Голый"] += 1
-                if game.get("eggs_happened", False): stats[p]["Проигр. Яйца"] += 1
+                if bool(game.get("eggs_happened", False)): stats[p]["Проигр. Яйца"] += 1
     except:
         continue
 
@@ -142,11 +138,10 @@ df_leaderboard.columns = [
     "Повесили Яйца", "Получили Яйца"
 ]
 
-# === РЕНДЕРИНГ ИНТЕРФЕЙСА ===
+# === ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ===
 st.title("🃏 Чемпионат по Белке")
-if st.button("🔄 Синхронизировать с базой"):
+if st.button("🔄 Обновить из Облака"):
     st.cache_data.clear()
-    st.session_state.players, st.session_state.games = load_data_from_sheets()
     st.rerun()
 
 st.markdown("### 🏆 Главная турнирная таблица")
@@ -155,6 +150,85 @@ df_main.index = df_main.index + 1
 st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
-st.warning("⚠️ Для включения функции непрерывной записи на вашем аккаунте GitHub, добавьте коннектор Google Sheets в настройках Streamlit Cloud Secrets, чтобы исключить влияние перезапусков серверов.")
 
-# [Остальной интерфейс вкладок аналитики работает стабильно на базе df_leaderboard]
+# Вкладки аналитики
+tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
+    "📝 История игр", "🚀 Раздали", "📉 Словленные", "👥 Связки"
+])
+
+with tab_history:
+    if st.session_state.games:
+        log_data = []
+        for i, g in enumerate(st.session_state.games, 1):
+            log_data.append({
+                "Матч №": i,
+                "Победители": f"{g['win_team'][0]}, {g['win_team'][1]}",
+                "Проигравшие": f"{g['loss_team'][0]}, {g['loss_team'][1]}",
+                "Статус": g.get("status", g.get("raw_status")),
+                "Очки": f"+{g['win_points']}"
+            })
+        st.dataframe(pd.DataFrame(log_data)[::-1], use_container_width=True, hide_index=True)
+    else:
+        st.info("В облаке пока нет записанных игр.")
+
+# Регистрация игры (Форма)
+col_bottom1, col_bottom2 = st.columns([1, 1])
+
+with col_bottom1:
+    st.markdown("### ➕ Регистрация игры")
+    match_password = st.text_input("🔑 Пароль:", type="password")
+    
+    with st.form("match_form", clear_on_submit=True):
+        p1 = st.selectbox("Победитель 1", st.session_state.players, index=0)
+        p2 = st.selectbox("Победитель 2", st.session_state.players, index=1)
+        p3 = st.selectbox("Проигравший 1", st.session_state.players, index=2)
+        p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
+        status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
+        eggs = st.checkbox("Повесили «Яйца» (+2 очка)")
+        
+        if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
+            if match_password != "6666":
+                st.error("🔒 Неверный пароль!")
+            elif len({p1, p2, p3, p4}) < 4:
+                st.error("Ошибка: Игроки дублируются!")
+            else:
+                win_pts, loss_pts = calculate_match_points(status, eggs)
+                
+                # Подготовка новой строки для добавления в Google Sheets
+                new_game = pd.DataFrame([{
+                    "win_team": f"{p1}, {p2}",
+                    "loss_team": f"{p3}, {p4}",
+                    "win_points": win_pts,
+                    "loss_points": loss_pts,
+                    "raw_status": status,
+                    "eggs_happened": str(eggs).upper(),
+                    "status": f"{status} {'+ Яйца' if eggs else ''}",
+                    "timestamp": time.time()
+                }])
+                
+                # Дописываем строку в таблицу 'games'
+                df_existing_games = conn.read(worksheet="games", ttl=0)
+                df_updated_games = pd.concat([df_existing_games, new_game], ignore_index=True)
+                conn.update(worksheet="games", data=df_updated_games)
+                
+                st.success("Результат успешно сохранен в Google Таблицу!")
+                st.cache_data.clear()
+                time.sleep(1)
+                st.rerun()
+
+with col_bottom2:
+    st.markdown("### ⚙️ Управление составом")
+    with st.expander("Добавить нового игрока в облако"):
+        new_player = st.text_input("Имя нового игрока:")
+        if st.button("Добавить"):
+            if match_password != "6666":
+                st.error("Пароль!")
+            elif new_player.strip():
+                df_existing_p = conn.read(worksheet="players", ttl=0)
+                new_p_df = pd.DataFrame([{"Имя": new_player.strip()}])
+                df_updated_p = pd.concat([df_existing_p, new_p_df], ignore_index=True)
+                conn.update(worksheet="players", data=df_updated_p)
+                st.success("Игрок добавлен в базу!")
+                st.cache_data.clear()
+                time.sleep(1)
+                st.rerun()

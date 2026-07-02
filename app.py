@@ -9,9 +9,9 @@ st.set_page_config(page_title="Чемпионат по Белке", layout="wide
 
 # --- ССЫЛКИ НА ТВОЮ ТАБЛИЦУ (ВСТАВЬ СВОИ) ---
 # 1. Твоя обычная ссылка на Google Таблицу:
-GSHEET_URL = "ВСТАВЬ_СЮДА_ССЫЛКУ_НА_ГУГЛ_ТАБЛИЦУ"
+GSHEET_URL = "https://docs.google.com/spreadsheets/d/18N2DacqDdIfwb6XHW0l-vxTeRZS8r1oVL687WOONMZ4/edit?usp=sharing"
 # 2. URL веб-приложения, который ты скопировал на Шаге 1 из Apps Script:
-WEB_APP_URL = "ВСТАВЬ_СЮДА_URL_ВЕБ_ПРИЛОЖЕНИЯ_ИЗ_APPS_SCRIPT"
+WEB_APP_URL = "https://belka-tournament-mva9qn7a9t9mhztggwzgv7.streamlit.app/"
 
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС ---
 st.markdown("""

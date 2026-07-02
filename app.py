@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
-import requests
-import json
+import gspread
 import time
 
 # Настройка страницы
@@ -21,7 +20,7 @@ st.markdown("""
     }
     [data-testid="stCheckbox"] label p { color: #ffffff !important; }
     
-    /* Стилизация кнопки сохранения — БЕЛЫЙ текст на зеленом фоне */
+    /* Стилизация кнопки сохранения — БЕЛЫЙ текст */
     div.stButton > button {
         width: 100% !important;
         background-color: #1e7e34 !important;
@@ -43,36 +42,54 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Получение скрытых настроек из Streamlit Secrets
-try:
-    GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    WEB_APP_URL = st.secrets["connections"]["gsheets"]["web_app_url"]
-except Exception:
-    st.error("⚠️ В настройках Streamlit Secrets не хватает ссылок на Google Таблицу или скрипт Apps Script!")
-    st.stop()
+# Инициализация подключения через gspread и Secrets
+@st.cache_resource
+def get_gspread_client():
+    try:
+        credentials = dict(st.secrets["gcp_service_account"])
+        # Заменяем экранирование переноса строк в закрытом ключе, если необходимо
+        if "private_key" in credentials:
+            credentials["private_key"] = credentials["private_key"].replace("\\n", "\n")
+        gc = gspread.service_account_from_dict(credentials)
+        return gc
+    except Exception as e:
+        st.error(f"Ошибка авторизации Google Ключа: {e}")
+        return None
+
+gc = get_gspread_client()
 
 DEFAULT_PLAYERS = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Ерлан", "Каиржан", "Аманат", "Мирхат", "Шынгыс"]
 
 @st.cache_data(ttl=2)
 def load_data_from_sheets():
+    if gc is None:
+        return DEFAULT_PLAYERS.copy(), []
     try:
-        base_link = GSHEET_URL.split('/edit')[0]
-        players_url = f"{base_link}/gviz/tq?tqx=out:csv&sheet=players"
-        games_url = f"{base_link}/gviz/tq?tqx=out:csv&sheet=games"
+        sh = gc.open_by_url(st.secrets["spreadsheet_url"])
         
-        df_p = pd.read_csv(players_url)
-        df_g = pd.read_csv(games_url)
-        
-        players = df_p['Имя'].dropna().astype(str).tolist() if not df_p.empty and 'Имя' in df_p.columns else DEFAULT_PLAYERS.copy()
-        games = df_g.to_dict(orient='records') if not df_g.empty else []
-        
+        # Загрузка игроков
+        try:
+            worksheet_p = sh.worksheet("players")
+            df_p = pd.DataFrame(worksheet_p.get_all_records())
+            players = df_p['Имя'].dropna().astype(str).tolist() if not df_p.empty and 'Имя' in df_p.columns else DEFAULT_PLAYERS.copy()
+        except:
+            players = DEFAULT_PLAYERS.copy()
+            
+        # Загрузка матчей
+        try:
+            worksheet_g = sh.worksheet("games")
+            df_g = pd.DataFrame(worksheet_g.get_all_records())
+            games = df_g.to_dict(orient='records') if not df_g.empty else []
+        except:
+            games = []
+            
         for g in games:
             if isinstance(g.get('win_team'), str):
                 g['win_team'] = [x.strip() for x in g['win_team'].split(',')]
             if isinstance(g.get('loss_team'), str):
                 g['loss_team'] = [x.strip() for x in g['loss_team'].split(',')]
         return players, games
-    except Exception:
+    except Exception as e:
         return DEFAULT_PLAYERS.copy(), []
 
 # Загрузка актуальных данных
@@ -150,7 +167,6 @@ st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-# Вкладки доп. аналитики
 tab_history, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📝 История игр", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
@@ -179,7 +195,6 @@ with tab_pairs:
 
 st.markdown("---")
 
-# Нижний блок
 col_bottom1, col_bottom2 = st.columns([1, 1])
 
 with col_bottom1:
@@ -199,23 +214,23 @@ with col_bottom1:
                 st.error("🔒 Неверный пароль!")
             elif len({p1, p2, p3, p4}) < 4:
                 st.error("Ошибка: Участники дублируются!")
+            elif gc is None:
+                st.error("Ошибка: Подключение к Google Таблицам не настроено.")
             else:
                 win_pts, loss_pts = calculate_match_points(status, eggs)
-                payload = {
-                    "action": "add_game",
-                    "win_team": f"{p1}, {p2}", "loss_team": f"{p3}, {p4}",
-                    "win_points": int(win_pts), "loss_points": int(loss_pts),
-                    "raw_status": str(status), "eggs_happened": str(eggs).upper(),
-                    "status": f"{status} {'+ Яйца' if eggs else ''}", "timestamp": float(time.time())
-                }
-                response = requests.post(WEB_APP_URL, json=payload)
-                if response.status_code == 200:
-                    st.success("Результат сохранен в Облаке!")
+                try:
+                    sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                    worksheet_g = sh.worksheet("games")
+                    worksheet_g.append_row([
+                        f"{p1}, {p2}", f"{p3}, {p4}", int(win_pts), int(loss_pts),
+                        str(status), str(eggs).upper(), f"{status} {'+ Яйца' if eggs else ''}", float(time.time())
+                    ])
+                    st.success("Результат успешно сохранен в Облаке!")
                     st.cache_data.clear()
                     time.sleep(1)
                     st.rerun()
-                else:
-                    st.error("Ошибка сети при отправке в Google Таблицу.")
+                except Exception as e:
+                    st.error(f"Ошибка сохранения: {e}")
 
 with col_bottom2:
     st.markdown("### ⚙️ Управление составом")
@@ -224,13 +239,16 @@ with col_bottom2:
         if st.button("ДОБАВИТЬ В БАЗУ"):
             if match_password != "6666":
                 st.error("🔒 Введите верный пароль выше!")
+            elif gc is None:
+                st.error("Нет подключения к Google Таблицам.")
             elif new_player.strip():
-                payload = {"action": "add_player", "name": new_player.strip()}
-                response = requests.post(WEB_APP_URL, json=payload)
-                if response.status_code == 200:
-                    st.success(f"Игрок {new_player} добавлен!")
+                try:
+                    sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                    worksheet_p = sh.worksheet("players")
+                    worksheet_p.append_row([new_player.strip()])
+                    st.success(f"Игрок {new_player} успешно добавлен!")
                     st.cache_data.clear()
                     time.sleep(1)
                     st.rerun()
-                else:
-                    st.error("Ошибка добавления.")
+                except Exception as e:
+                    st.error(f"Ошибка добавления: {e}")

@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -141,16 +141,23 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 1, 0) if eggs else (base_points, 0)
 
-# --- АЛГОРИТМ ГЕНЕРАЦИИ СБАЛАНСИРОВАННОГО КРУГОВОГО КАЛЕНДАРЯ ---
+# --- АЛГОРИТМ ГЕНЕРАЦИИ СБАЛАНСИРОВАННОГО КАЛЕНДАРЯ НА 1 КРУГ ВСТРЕЧ ---
 def generate_balanced_schedule(player_list):
     if len(player_list) < 4:
         return []
     all_possible_pairs = list(itertools.combinations(player_list, 2))
     all_possible_matches = []
+    
+    # Чтобы пары не играли дважды, сохраняем уникальные противостояния дуэтов
+    seen_pair_matchups = set()
+    
     for i, pair1 in enumerate(all_possible_pairs):
         for pair2 in all_possible_pairs[i+1:]:
             if set(pair1).isdisjoint(set(pair2)):
-                all_possible_matches.append((tuple(sorted(pair1)), tuple(sorted(pair2))))
+                matchup = tuple(sorted([tuple(sorted(pair1)), tuple(sorted(pair2))]))
+                if matchup not in seen_pair_matchups:
+                    seen_pair_matchups.add(matchup)
+                    all_possible_matches.append((tuple(sorted(pair1)), tuple(sorted(pair2))))
                 
     schedule = []
     used_matches = set()
@@ -292,12 +299,12 @@ for p in stats:
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
 df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
 
-st.title("🏆 КЛАССИЧЕСКАЯ ЛИГА БЕЛКИ")
+# НАЗВАНИЕ ИЗМЕНЕНО НА "ЛИГА БЕЛКИ"
+st.title("🏆 ЛИГА БЕЛКИ")
 
 if st.button("🔄 Синхронизировать с Google Таблицей"):
     force_reload()
 
-# --- ТАБЛИЦА С МУЛЬТИИНДЕКСОМ ---
 st.markdown("### 📊 Таблица")
 
 # Сортируем данные
@@ -319,7 +326,7 @@ multi_df[("глаза", "выигр")] = df_sorted["глаза_выигр"]
 multi_df[("глаза", "проигр")] = df_sorted["глаза_проигр"]
 multi_df[("глаза", "разница")] = df_sorted["глаза_разница"]
 
-# Секция "голый"
+# Секция "голый" (ИКОНКА ЗАМЕНЕНА НА 🔥)
 multi_df[("голый", "выигр")] = df_sorted["голый_выигр"]
 multi_df[("голый", "проигр")] = df_sorted["голый_проигр"]
 multi_df[("голый", "разница")] = df_sorted["голый_разница"]
@@ -334,18 +341,16 @@ multi_df[("сокыр", "выигр")] = df_sorted["сокыр_выигр"]
 multi_df[("сокыр", "проигр")] = df_sorted["сокыр_проигр"]
 multi_df[("сокыр", "разница")] = df_sorted["сокыр_разница"]
 
-# Создаем объект MultiIndex для колонок
 multi_df.columns = pd.MultiIndex.from_tuples(multi_df.columns)
 multi_df.index = multi_df.index + 1
 
-# Отображаем двухуровневую таблицу
 st.dataframe(multi_df, use_container_width=True)
 
 st.markdown("---")
 
-# --- ОБНОВЛЕННАЯ СТРУКТУРА ВКЛАДОК АНАЛИТИКИ ---
+# --- ОБНОВЛЕННАЯ СТРУКТУРА ВКЛАДОК АНАЛИТИКИ (ИКОНКА ЗАМЕНЕНА НА 🔥) ---
 tab_calendar, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
-    "📅 Календарь и История", "🃏 Партии", "👁️ Глаза", "裸 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
+    "📅 Календарь и История", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
 
 # 1. ОБЪЕДИНЕННЫЙ КАЛЕНДАРЬ И ИСТОРИЯ
@@ -386,35 +391,35 @@ with tab_calendar:
         })
     st.dataframe(pd.DataFrame(sched_data), use_container_width=True, hide_index=True)
 
-# 2. ПАРТИИ (Побед, Проигрыш, Разница)
+# 2. ПАРТИИ
 with tab_partii:
     st.markdown("#### Аналитика по Партиям")
     df_partii = df_leaderboard[["Игрок", "партия_выигр", "партия_проигр", "партия_разница"]].copy()
     df_partii.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_partii.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 3. ГЛАЗА (Побед, Проигрыш, Разница)
+# 3. ГЛАЗА
 with tab_glaza:
     st.markdown("#### Аналитика по набранным и упущенным глазам")
     df_glaza = df_leaderboard[["Игрок", "глаза_выигр", "глаза_проигр", "глаза_разница"]].copy()
     df_glaza.columns = ["Игрок", "Побед (Набрано)", "Проигрыш (Упущено)", "Разница"]
     st.dataframe(df_glaza.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. ГОЛЫЕ (Побед, Проигрыш, Разница)
+# 4. ГОЛЫЕ
 with tab_golye:
     st.markdown("#### Аналитика по Голым партиям")
-    df_golye = df_leaderboard[["Игрок", "голый_выигр", "голый_проигр", "голый_разница"]].copy()
+    df_golye = df_leaderboard[["Игrok", "голый_выигр", "голый_проигр", "голый_разница"]].copy()
     df_golye.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_golye.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 5. ЯЙЦА (Побед, Проигрыш, Разница)
+# 5. ЯЙЦА
 with tab_yaica:
     st.markdown("#### Аналитика по повешенным и пойманным Яйцам")
     df_yaica = df_leaderboard[["Игрок", "яйца_выигр", "яйца_проигр", "яйца_разница"]].copy()
     df_yaica.columns = ["Игрок", "Побед (Повесили)", "Проигрыш (Получили)", "Разница"]
     st.dataframe(df_yaica.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 6. СОКЫРЫ (Побед, Проигрыш, Разница)
+# 6. СОКЫРЫ
 with tab_sokyry:
     st.markdown("#### Аналитика по партиям вслепую (Сокыр)")
     df_sokyry = df_leaderboard[["Игрок", "сокыр_выигр", "сокыр_проигр", "сокыр_разница"]].copy()
@@ -564,14 +569,14 @@ with col_bottom2:
                 else: st.error("Не найден в таблице.")
             except Exception as e: st.error(f"Ошибка: {e}")
 
-    # КНОПКА СБРОСА ВСЕЙ ТАБЛИЦЫ ДО НУЛЯ
+    # ТЕКСТА ОПАСНОЙ ЗОНЫ И ЦИФР ПАРОЛЯ БОЛЬШЕ НЕТ НА ЭКРАНЕ
     st.markdown("---")
-    st.markdown("#### 🚨 Опасная зона (Сброс результатов)")
-    reset_password = st.text_input("🔑 Введите пароль для полного сброса (5559):", type="password")
+    st.markdown("#### Сброс результатов")
+    reset_password = st.text_input("🔑 Введите ключ доступа для сброса:", type="password")
     
     if st.button("🚨 СБРОСИТЬ ВСЮ ТАБЛИЦУ ДО НУЛЯ"):
         if reset_password != "5559":
-            st.error("🔒 Доступ заблокирован! Неверный пароль сброса.")
+            st.error("🔒 Доступ заблокирован! Неверный ключ доступа.")
         elif gc is None:
             st.error("Нет подключения к базе данных.")
         else:

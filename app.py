@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import gspread
 import time
+import itertools
 
 # Настройка страницы
-st.set_page_config(page_title="Лига Белки 8 игроков", layout="wide", page_icon="🏆")
+st.set_page_config(page_title="Лига Белки", layout="wide", page_icon="🏆")
 
-# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС (Контрастный Желтый для вкладок) ---
+# --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС ---
 st.markdown("""
     <style>
     .stApp {
@@ -42,21 +43,21 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* Красные кнопки удаления */
-    button:contains("УДАЛИТЬ") {
+    /* Красные кнопки удаления/исключения */
+    button:contains("УДАЛИТЬ"), button:contains("Исключить") {
         background-color: #b21f2d !important;
         color: #ffffff !important;
         border: 2px solid #dc3545 !important;
     }
     
-    /* СТИЛИЗАЦИЯ ВКЛАДОК: Неактивные - Желтые, Активные - Белые */
+    /* СТИЛИЗАЦИЯ ВКЛАДОК */
     button[data-baseweb="tab"] { 
         font-size: 15px !important; 
         font-weight: bold !important; 
-        color: #e2b13c !important; /* Мягкий золотисто-желтый для неактивных */
+        color: #e2b13c !important;
     }
     button[aria-selected="true"] { 
-        color: #ffffff !important; /* Белый для активной вкладки */
+        color: #ffffff !important; 
         border-bottom-color: #ffcc00 !important; 
     }
     hr { border-top: 1px solid #1e7e34 !important; }
@@ -78,7 +79,7 @@ def get_gspread_client():
 
 gc = get_gspread_client()
 
-# Список твоих 8 участников
+# Дефолтный список участников
 DEFAULT_PLAYERS = ["Азирхан", "Аманат", "Данияр", "Елдар", "Мерхат", "Рустем", "Талгат", "Шынгыс"]
 
 @st.cache_data(ttl=2)
@@ -88,12 +89,12 @@ def load_data_from_sheets():
     try:
         sh = gc.open_by_url(st.secrets["spreadsheet_url"])
         
-        # Загрузка списка игроков
+        # Загрузка игроков
         try:
             worksheet_p = sh.worksheet("players")
-            players = [x for x in worksheet_p.col_values(1) if x and x != 'Имя'][:8]
-            while len(players) < 8:
-                players.append(DEFAULT_PLAYERS[len(players)])
+            players = [x for x in worksheet_p.col_values(1) if x and x != 'Имя']
+            if not players:
+                players = DEFAULT_PLAYERS.copy()
         except:
             players = DEFAULT_PLAYERS.copy()
             
@@ -104,7 +105,6 @@ def load_data_from_sheets():
             df_g = pd.DataFrame(all_records)
             games = df_g.to_dict(orient='records') if not df_g.empty else []
         except Exception as e:
-            st.warning(f"Не удалось загрузить историю игр (возможно, таблица пуста): {e}")
             games = []
             
         for g in games:
@@ -122,44 +122,100 @@ players, games = load_data_from_sheets()
 st.session_state.players = players
 st.session_state.games = games
 
-# --- СИСТЕМА НАЧИСЛЕНИЯ ОЧКОВ (ЛИГА) ---
+# --- СИСТЕМА НАЧИСЛЕНИЯ ОЧКОВ ---
 POINTS_DICT = {
-    "Сокыр (12 очков)": 12,
-    "Партия (3 очка)": 3,
-    "Голый (2 очка)": 2
+    "Партия (2 очка)": 2,
+    "Голый (3 очка)": 3,
+    "Сокыр (12 очков)": 12
 }
 
 def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 1, 0) if eggs else (base_points, 0)
 
-# Матрица расписания (индексы игроков 0-7)
-SCHEDULE_INDEXES = [
-    {"tour": 1, "m1_w": [0, 1], "m1_l": [2, 3], "m2_w": [4, 5], "m2_l": [6, 7]},
-    {"tour": 2, "m1_w": [0, 2], "m1_l": [5, 7], "m2_w": [1, 3], "m2_l": [4, 6]},
-    {"tour": 3, "m1_w": [0, 7], "m1_l": [1, 6], "m2_w": [2, 5], "m2_l": [3, 4]},
-    {"tour": 4, "m1_w": [0, 6], "m1_l": [2, 4], "m2_w": [1, 7], "m2_l": [3, 5]},
-    {"tour": 5, "m1_w": [0, 4], "m1_l": [3, 7], "m2_w": [1, 5], "m2_l": [2, 6]},
-    {"tour": 6, "m1_w": [0, 3], "m1_l": [5, 6], "m2_w": [1, 2], "m2_l": [4, 7]},
-    {"tour": 7, "m1_w": [0, 5], "m1_l": [1, 4], "m2_w": [3, 6], "m2_l": [2, 7]},
-    {"tour": 8, "m1_w": [0, 1], "m1_l": [4, 7], "m2_w": [2, 3], "m2_l": [5, 6]},
-    {"tour": 9, "m1_w": [0, 2], "m1_l": [3, 6], "m2_w": [1, 5], "m2_l": [4, 7]},
-    {"tour": 10, "m1_w": [0, 7], "m1_l": [2, 6], "m2_w": [1, 3], "m2_l": [5, 4]},
-    {"tour": 11, "m1_w": [0, 6], "m1_l": [1, 2], "m2_w": [3, 7], "m2_l": [4, 5]},
-    {"tour": 12, "m1_w": [0, 4], "m1_l": [1, 7], "m2_w": [2, 5], "m2_l": [3, 6]},
-    {"tour": 13, "m1_w": [0, 3], "m1_l": [2, 4], "m2_w": [1, 6], "m2_l": [5, 7]},
-    {"tour": 14, "m1_w": [0, 5], "m1_l": [3, 4], "m2_w": [1, 4], "m2_l": [2, 7]}
-]
+# --- АЛГОРИТМ ГЕНЕРАЦИИ УНИКАЛЬНОГО РАСПИСАНИЯ ---
+# Генерирует все возможные уникальные сочетания партий, чтобы сыграли все вариации пар.
+def generate_balanced_schedule(player_list):
+    if len(player_list) < 4:
+        return []
+    
+    # Все возможные уникальные пары
+    all_pairs = list(itertools.combinations(player_list, 2))
+    used_pairs = set()
+    schedule = []
+    tour_num = 1
+    
+    # Пытаемся составить туры, где пары не пересекаются
+    max_attempts = 100
+    for _ in range(max_attempts):
+        if len(used_pairs) >= len(all_pairs):
+            break
+        
+        # Находим доступные пары для этого тура
+        available_pairs = [p for p in all_pairs if p not in used_pairs]
+        if len(available_pairs) < 2:
+            break
+            
+        tour_matches = []
+        active_players_in_tour = set()
+        
+        # Ищем первый матч (Пара 1 против Пары 2)
+        match1_found = False
+        for p1 in available_pairs:
+            for p2 in available_pairs:
+                if set(p1).isdisjoint(set(p2)):
+                    tour_matches.append((p1, p2))
+                    active_players_in_tour.update(p1)
+                    active_players_in_tour.update(p2)
+                    used_pairs.add(p1)
+                    used_pairs.add(p2)
+                    match1_found = True
+                    break
+            if match1_found:
+                break
+                
+        if not match1_found:
+            break
+            
+        # Ищем второй матч для оставшихся игроков в этом же туре
+        remaining_pairs = [p for p in available_pairs if p not in used_pairs and set(p).isdisjoint(active_players_in_tour)]
+        match2_found = False
+        for p3 in remaining_pairs:
+            for p4 in remaining_pairs:
+                if set(p3).isdisjoint(set(p4)):
+                    tour_matches.append((p3, p4))
+                    used_pairs.add(p3)
+                    used_pairs.add(p4)
+                    match2_found = True
+                    break
+            if match2_found:
+                break
+                
+        if len(tour_matches) >= 1:
+            m1 = tour_matches[0]
+            m2 = tour_matches[1] if len(tour_matches) > 1 else (None, None)
+            
+            schedule.append({
+                "tour": tour_num,
+                "m1_p1": m1[0],
+                "m1_p2": m1[1],
+                "m2_p1": m2[0] if m2 else None,
+                "m2_p2": m2[1] if m2 else None
+            })
+            tour_num += 1
+            
+    return schedule
+
+DYNAMIC_SCHEDULE = generate_balanced_schedule(st.session_state.players)
 
 # --- РАСЧЕТ СТАТИСТИКИ ---
 stats = {p: {
-    "Очки": 0, "Игры": 0, "Победы": 0, "Поражения": 0, "Средний балл": 0.0,
+    "Очки": 0, "Игры": 0, "Победы": 0, "Поражения": 0,
     "Забитые глаза": 0, "Пропущенные глаза": 0, "Разница глаз": 0,
-    "Выигр. Теке": 0, "Проигр. Теке": 0, "Разница Теке": 0,
-    "Выигр. Голый": 0, "Проигр. Голый": 0, "Разница Голый": 0,
-    "Повесили Яйца": 0, "Получили Яйца": 0, "Разница Яйца": 0,
-    "Выигр. Сокыр": 0, "Проигр. Сокыр": 0, "Разница Сокыр": 0,
-    "Выигр. Партия": 0, "Проигр. Партия": 0
+    "[Партии] Выиграно": 0, "[Партии] Проиграно": 0, "[Партии] Разница": 0,
+    "[Голый] Выиграно": 0, "[Голый] Проиграно": 0, "[Голый] Разница": 0,
+    "[Яйца] Повесили": 0, "[Яйца] Получили": 0, "[Яйца] Разница": 0,
+    "[Сокыр] Выиграно": 0, "[Сокыр] Проиграно": 0, "[Сокыр] Разница": 0
 } for p in st.session_state.players}
 
 pairs_stats = {}
@@ -170,14 +226,15 @@ for game in st.session_state.games:
         l_team = game.get("loss_team", [])
         if len(w_team) < 2 or len(l_team) < 2: continue
         
+        # Проверка актуальности участников (если игрок был удален)
+        if not (all(p in stats for p in w_team) and all(p in stats for p in l_team)):
+            continue
+            
         win_pts = int(game.get("win_points", 0))
         loss_pts = int(game.get("loss_points", 0))
-        
-        # Получаем глаза
         win_eyes = int(game.get("win_eyes", 12))
         loss_eyes = int(game.get("loss_eyes", 0))
 
-        # --- Статистика связок ---
         win_pair = tuple(sorted(w_team))
         loss_pair = tuple(sorted(l_team))
 
@@ -189,10 +246,10 @@ for game in st.session_state.games:
                 pairs_stats[pair] = {
                     "Очки": 0, "Игры": 0, "Победы": 0,
                     "Забитые глаза": 0, "Пропущенные глаза": 0,
-                    "Выигр. Теке": 0, "Проигр. Теке": 0,
-                    "Выигр. Голый": 0, "Проигр. Голый": 0,
-                    "Повесили Яйца": 0, "Получили Яйца": 0,
-                    "Выигр. Сокыр": 0, "Проигр. Сокыр": 0
+                    "[Партии] Выиграно": 0, "[Партии] Проиграно": 0,
+                    "[Голый] Выиграно": 0, "[Голый] Проиграно": 0,
+                    "[Яйца] Повесили": 0, "[Яйца] Получили": 0,
+                    "[Сокыр] Выиграно": 0, "[Сокыр] Проиграно": 0
                 }
             pairs_stats[pair]["Очки"] += pts
             pairs_stats[pair]["Игры"] += 1
@@ -201,312 +258,190 @@ for game in st.session_state.games:
             if is_win:
                 pairs_stats[pair]["Победы"] += 1
 
-        # --- Личная детализация ---
         raw_status = str(game.get("raw_status", ""))
         is_eggs = str(game.get("eggs_happened", "")).upper() in ["TRUE", "1", "ИСТИНА"]
 
         # Победители
         for p in w_team:
-            if p in stats:
-                stats[p]["Очки"] += win_pts
-                stats[p]["Игры"] += 1
-                stats[p]["Победы"] += 1
-                stats[p]["Забитые глаза"] += win_eyes
-                stats[p]["Пропущенные глаза"] += loss_eyes
-                if "Сокыр" in raw_status:
-                    stats[p]["Выигр. Сокыр"] += 1
-                    pairs_stats[win_pair]["Выигр. Сокыр"] += 1
-                elif "Партия" in raw_status:
-                    stats[p]["Выигр. Партия"] += 1
-                elif "Голый" in raw_status:
-                    stats[p]["Выигр. Голый"] += 1
-                    pairs_stats[win_pair]["Выигр. Голый"] += 1
-                elif "Теке" in raw_status:
-                    stats[p]["Выигр. Теке"] += 1
-                    pairs_stats[win_pair]["Выигр. Теке"] += 1
-                if is_eggs:
-                    stats[p]["Повесили Яйца"] += 1
-                    pairs_stats[win_pair]["Повесили Яйца"] += 1
+            stats[p]["Очки"] += win_pts
+            stats[p]["Игры"] += 1
+            stats[p]["Победы"] += 1
+            stats[p]["Забитые глаза"] += win_eyes
+            stats[p]["Пропущенные глаза"] += loss_eyes
+            if "Партия" in raw_status:
+                stats[p]["[Партии] Выиграно"] += 1
+                pairs_stats[win_pair]["[Партии] Выиграно"] += 1
+            elif "Голый" in raw_status:
+                stats[p]["[Голый] Выиграно"] += 1
+                pairs_stats[win_pair]["[Голый] Выиграно"] += 1
+            elif "Сокыр" in raw_status:
+                stats[p]["[Сокыр] Выиграно"] += 1
+                pairs_stats[win_pair]["[Сокыр] Выиграно"] += 1
+            if is_eggs:
+                stats[p]["[Яйца] Повесили"] += 1
+                pairs_stats[win_pair]["[Яйца] Повесили"] += 1
                 
         # Проигравшие
         for p in l_team:
-            if p in stats:
-                stats[p]["Очки"] += loss_pts
-                stats[p]["Игры"] += 1
-                stats[p]["Поражения"] += 1
-                stats[p]["Забитые глаза"] += loss_eyes
-                stats[p]["Пропущенные глаза"] += win_eyes
-                if "Сокыр" in raw_status:
-                    stats[p]["Проигр. Сокыр"] += 1
-                    pairs_stats[loss_pair]["Проигр. Сокыр"] += 1
-                elif "Партия" in raw_status:
-                    stats[p]["Проигр. Партия"] += 1
-                elif "Голый" in raw_status:
-                    stats[p]["Проигр. Голый"] += 1
-                    pairs_stats[loss_pair]["Проигр. Голый"] += 1
-                elif "Теке" in raw_status:
-                    stats[p]["Проигр. Теке"] += 1
-                    pairs_stats[loss_pair]["Проигр. Теке"] += 1
-                if is_eggs:
-                    stats[p]["Получили Яйца"] += 1
-                    pairs_stats[loss_pair]["Получили Яйца"] += 1
+            stats[p]["Очки"] += loss_pts
+            stats[p]["Игры"] += 1
+            stats[p]["Поражения"] += 1
+            stats[p]["Забитые глаза"] += loss_eyes
+            stats[p]["Пропущенные глаза"] += win_eyes
+            if "Партия" in raw_status:
+                stats[p]["[Партии] Проиграно"] += 1
+                pairs_stats[loss_pair]["[Партии] Проиграно"] += 1
+            elif "Голый" in raw_status:
+                stats[p]["[Голый] Проиграно"] += 1
+                pairs_stats[loss_pair]["[Голый] Проиграно"] += 1
+            elif "Сокыр" in raw_status:
+                stats[p]["[Сокыр] Проиграно"] += 1
+                pairs_stats[loss_pair]["[Сокыр] Проиграно"] += 1
+            if is_eggs:
+                stats[p]["[Яйца] Получили"] += 1
+                pairs_stats[loss_pair]["[Яйца] Получили"] += 1
     except:
         continue
 
-# Расчет разниц по игрокам
+# Расчет разниц
 for p in stats:
-    if stats[p]["Игры"] > 0:
-        stats[p]["Средний балл"] = round(stats[p]["Очки"] / stats[p]["Игры"], 2)
     stats[p]["Разница глаз"] = stats[p]["Забитые глаза"] - stats[p]["Пропущенные глаза"]
-    stats[p]["Разница Теке"] = stats[p]["Выигр. Теке"] - stats[p]["Проигр. Теке"]
-    stats[p]["Разница Голый"] = stats[p]["Выигр. Голый"] - stats[p]["Проигр. Голый"]
-    stats[p]["Разница Яйца"] = stats[p]["Повесили Яйца"] - stats[p]["Получили Яйца"]
-    stats[p]["Разница Сокыр"] = stats[p]["Выигр. Сокыр"] - stats[p]["Проигр. Сокыр"]
+    stats[p]["[Партии] Разница"] = stats[p]["[Партии] Выиграно"] - stats[p]["[Партии] Проиграно"]
+    stats[p]["[Голый] Разница"] = stats[p]["[Голый] Выиграно"] - stats[p]["[Голый] Проиграно"]
+    stats[p]["[Яйца] Разница"] = stats[p]["[Яйца] Повесили"] - stats[p]["[Яйца] Получили"]
+    stats[p]["[Сокыр] Разница"] = stats[p]["[Сокыр] Выиграно"] - stats[p]["[Сокыр] Проиграно"]
 
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
-df_leaderboard.columns = [
-    "Игрок", "Всего очков", "Сыграно игр", "Победы", "Поражения", "Средний балл",
-    "Забитые глаза", "Пропущенные глаза", "Разница глаз",
-    "Выигр. Теке", "Проигр. Теке", "Разница Теке",
-    "Выигр. Голый", "Проигр. Голый", "Разница Голый",
-    "Повесили Яйца", "Получили Яйца", "Разница Яйца",
-    "Выигр. Сокыр", "Проигр. Сокыр", "Разница Сокыр",
-    "Выигр. Партия", "Проигр. Партия"
-]
+df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
 
 # === ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ===
-st.title("🏆 КЛАССИЧЕСКАЯ ЛИГА БЕЛКИ (8 ИГРОКОВ)")
+st.title("🏆 КЛАССИЧЕСКАЯ ЛИГА БЕЛКИ")
 
-if st.button("🔄 Обновить общую таблицу"):
+if st.button("🔄 Обновить данные"):
     st.cache_data.clear()
     st.rerun()
 
-st.markdown("### 📊 Главная турнирная таблица")
+st.markdown("### 📊 Главная турнирная таблица (ГТТ)")
 
-main_table_cols = [
-    "Игрок", "Всего очков", "Сыграно игр", "Средний балл",
+# Упорядоченные колонки ГТТ по новому ТЗ
+gtt_cols = [
+    "Игрок", "Всего очков", "Сыграно игр",
+    "[Партии] Выиграно", "[Партии] Проиграно", "[Партии] Разница",
     "Забитые глаза", "Пропущенные глаза", "Разница глаз",
-    "Выигр. Теке", "Проигр. Теке", "Разница Теке",
-    "Выигр. Голый", "Проигр. Голый", "Разница Голый",
-    "Повесили Яйца", "Получили Яйца", "Разница Яйца",
-    "Выигр. Сокыр", "Проигр. Сокыр", "Разница Сокыр"
+    "[Голый] Выиграно", "[Голый] Проиграно", "[Голый] Разница",
+    "[Яйца] Повесили", "[Яйца] Получили", "[Яйца] Разница",
+    "[Сокыр] Выиграно", "[Сокыр] Проиграно", "[Сокыр] Разница"
 ]
 
-# ИСПРАВЛЕНИЕ БАГА: Сначала сортируем весь DataFrame (где есть колонка "Победы"), а потом выбираем отображаемые колонки
 df_main = df_leaderboard.sort_values(
-    by=["Всего очков", "Победы", "Разница глаз", "Средний балл"], 
-    ascending=[False, False, False, False]
-)[main_table_cols].reset_index(drop=True)
-
+    by=["Всего очков", "Победы", "Разница глаз"], 
+    ascending=[False, False, False]
+)[gtt_cols].reset_index(drop=True)
 df_main.index = df_main.index + 1
 st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
 # ГЛОБАЛЬНЫЕ ВКЛАДКИ
-tab_sched, tab_leader, tab_positive, tab_negative, tab_pairs, tab_history = st.tabs([
-    "📅 Расписание туров", "🏆 Главная таблица", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок", "📝 История игр"
+tab_calendar, tab_positive, tab_negative, tab_pairs = st.tabs([
+    "📅 Календарь и История", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
 
-# 1. РАСПИСАНИЕ ТУРОВ
-with tab_sched:
-    st.markdown("#### Календарь матчей Лиги")
+# 1. ОБЪЕДИНЕННЫЙ КАЛЕНДАРЬ И ИСТОРИЯ
+with tab_calendar:
+    st.markdown("#### Расписание туров и Результаты сыгранных встреч")
+    
+    # Словарь сыгранных матчей для подстановки в календарь
+    match_results = {}
+    for g in st.session_state.games:
+        try:
+            wt = sorted(g['win_team'])
+            lt = sorted(g['loss_team'])
+            key = (tuple(wt), tuple(lt))
+            match_results[key] = f"🟢 {wt[0]}+{wt[1]} ({g['win_eyes']} глазов) vs 🔴 {lt[0]}+{lt[1]} ({g['loss_eyes']} глазов) [{g['status']}]"
+        except:
+            continue
+
     sched_data = []
-    for s in SCHEDULE_INDEXES:
-        p_names = st.session_state.players
+    for s in DYNAMIC_SCHEDULE:
+        if s['m1_p1'] and s['m1_p2']:
+            pair1_1 = sorted(s['m1_p1'])
+            pair1_2 = sorted(s['m1_p2'])
+            key1 = (tuple(pair1_1), tuple(pair1_2))
+            res1 = match_results.get(key1, match_results.get((tuple(pair1_2), tuple(pair1_1)), "Предстоит сыграть"))
+            m1_text = f"{pair1_1[0]} + {pair1_1[1]} 🆚 {pair1_2[0]} + {pair1_2[1]}"
+        else:
+            m1_text, res1 = "—", "—"
+
+        if s['m2_p1'] and s['m2_p2']:
+            pair2_1 = sorted(s['m2_p1'])
+            pair2_2 = sorted(s['m2_p2'])
+            key2 = (tuple(pair2_1), tuple(pair2_2))
+            res2 = match_results.get(key2, match_results.get((tuple(pair2_2), tuple(pair2_1)), "Предстоит сыграть"))
+            m2_text = f"{pair2_1[0]} + {pair2_1[1]} 🆚 {pair2_2[0]} + {pair2_2[1]}"
+        else:
+            m2_text, res2 = "—", "—"
+
         sched_data.append({
             "Тур": f"Тур {s['tour']}",
-            "Матч 1": f"{p_names[s['m1_w'][0]]} + {p_names[s['m1_w'][1]]}  🆚  {p_names[s['m1_l'][0]]} + {p_names[s['m1_l'][1]]}",
-            "Матч 2": f"{p_names[s['m2_w'][0]]} + {p_names[s['m2_w'][1]]}  🆚  {p_names[s['m2_l'][0]]} + {p_names[s['m2_l'][1]]}"
+            "Матч 1": m1_text,
+            "Результат Матча 1": res1,
+            "Матч 2": m2_text,
+            "Результат Матча 2": res2
         })
+        
     st.dataframe(pd.DataFrame(sched_data), use_container_width=True, hide_index=True)
 
-# 2. ГЛАВНАЯ ТАБЛИЦА
-with tab_leader:
-    st.dataframe(df_main, use_container_width=True)
-
-# 3. ВЫИГРЫШИ
+# 2. РАЗДАЛИ (ВЫИГРЫШИ)
 with tab_positive:
-    sub_pos_tabs = st.tabs([
-        "🐐 Теке", "📊 Разница Теке", 
-        "🪵 Голый", "📊 Разница Голого", 
-        "🥚 Повесили Яйца", "📊 Разница Яиц", 
-        "👁️ Сокыр", "📊 Разница Сокыра",
-        "👁️ Забитые Глаза", "📊 Разница Глаз"
-    ])
-    
+    sub_pos_tabs = st.tabs(["Партии", "Голый", "Яйца", "Сокыр", "Забитые Глаза"])
     with sub_pos_tabs[0]:
-        df_view = df_leaderboard[["Игрок", "Выигр. Теке"]].sort_values(by="Выигр. Теке", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[1]:
-        df_view = df_leaderboard[["Игрок", "Разница Теке"]].sort_values(by="Разница Теке", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[2]:
-        df_view = df_leaderboard[["Игрок", "Выигр. Голый"]].sort_values(by="Выигр. Голый", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[3]:
-        df_view = df_leaderboard[["Игрок", "Разница Голый"]].sort_values(by="Разница Голый", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[4]:
-        df_view = df_leaderboard[["Игрок", "Повесили Яйца"]].sort_values(by="Повесили Яйца", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_pos_tabs[5]:
-        df_view = df_leaderboard[["Игрок", "Разница Яйца"]].sort_values(by="Разница Яйца", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_pos_tabs[6]:
-        df_view = df_leaderboard[["Игрок", "Выигр. Сокыр"]].sort_values(by="Выигр. Сокыр", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_pos_tabs[7]:
-        df_view = df_leaderboard[["Игрок", "Разница Сокыр"]].sort_values(by="Разница Сокыр", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_pos_tabs[8]:
-        df_view = df_leaderboard[["Игрок", "Забитые глаза"]].sort_values(by="Забитые глаза", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_pos_tabs[9]:
-        df_view = df_leaderboard[["Игрок", "Разница глаз"]].sort_values(by="Разница глаз", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. ПРОИГРЫШИ
+# 3. СЛОВЛЕННЫЕ (ПРОИГРЫШИ)
 with tab_negative:
-    sub_neg_tabs = st.tabs([
-        "🐐 Проигр. Теке", "📊 Разница Теке", 
-        "🪵 Проигр. Голый", "📊 Разница Голого", 
-        "🥚 Получили Яйца", "📊 Разница Яиц", 
-        "👁️ Проигр. Сокыр", "📊 Разница Сокыра",
-        "👁️ Пропущенные Глаза", "📊 Разница Глаз"
-    ])
-    
+    sub_neg_tabs = st.tabs(["Проиграно Партий", "Проиграно Голых", "Получили Яйца", "Проиграно Сокыров", "Пропущенные Глаза"])
     with sub_neg_tabs[0]:
-        df_view = df_leaderboard[["Игрок", "Проигр. Теке"]].sort_values(by="Проигр. Теке", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Партии] Проиграно", "[Партии] Разница"]].sort_values(by="[Партии] Проиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_neg_tabs[1]:
-        df_view = df_leaderboard[["Игрок", "Разница Теке"]].sort_values(by="Разница Теке", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Голый] Проиграно", "[Голый] Разница"]].sort_values(by="[Голый] Проиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_neg_tabs[2]:
-        df_view = df_leaderboard[["Игрок", "Проигр. Голый"]].sort_values(by="Проигр. Голый", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Получили", "[Яйца] Разница"]].sort_values(by="[Яйца] Получили", ascending=False), use_container_width=True, hide_index=True)
     with sub_neg_tabs[3]:
-        df_view = df_leaderboard[["Игрок", "Разница Голый"]].sort_values(by="Разница Голый", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Проиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Проиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_neg_tabs[4]:
-        df_view = df_leaderboard[["Игрок", "Получили Яйца"]].sort_values(by="Получили Яйца", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_neg_tabs[5]:
-        df_view = df_leaderboard[["Игрок", "Разница Яйца"]].sort_values(by="Разница Яйца", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_neg_tabs[6]:
-        df_view = df_leaderboard[["Игрок", "Проигр. Сокыр"]].sort_values(by="Проигр. Сокыр", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_neg_tabs[7]:
-        df_view = df_leaderboard[["Игрок", "Разница Сокыр"]].sort_values(by="Разница Сокыр", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_neg_tabs[8]:
-        df_view = df_leaderboard[["Игрок", "Пропущенные глаза"]].sort_values(by="Пропущенные глаза", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
-    with sub_neg_tabs[9]:
-        df_view = df_leaderboard[["Игрок", "Разница глаз"]].sort_values(by="Разница глаз", ascending=False).reset_index(drop=True)
-        df_view.index = df_view.index + 1
-        st.dataframe(df_view, use_container_width=True)
+        st.dataframe(df_leaderboard[["Игрок", "Пропущенные глаза", "Разница глаз"]].sort_values(by="Пропущенные глаза", ascending=False), use_container_width=True, hide_index=True)
 
-# 5. РЕЙТИНГ СВЯЗОК
+# 4. РЕЙТИНГ СВЯЗОК
 with tab_pairs:
     if pairs_stats:
         p_list = []
         for k, v in pairs_stats.items():
-            diff_teke = v["Выигр. Теке"] - v["Проигр. Теке"]
-            diff_goly = v["Выигр. Голый"] - v["Проигр. Голый"]
-            diff_eggs = v["Повесили Яйца"] - v["Получили Яйца"]
-            diff_sokyr = v["Выигр. Сокыр"] - v["Проигр. Сокыр"]
-            diff_eyes = v["Забитые глаза"] - v["Пропущенные глаза"]
             p_list.append({
                 "Пара игроков": f"{k[0]} 🤝 {k[1]}",
                 "Очки": v["Очки"],
                 "Игры": v["Игры"],
                 "Победы": v["Победы"],
-                "Средний балл": round(v["Очки"] / v["Игры"] if v["Игры"] > 0 else 0, 2),
                 "Забитые глаза": v["Забитые глаза"],
                 "Пропущенные глаза": v["Пропущенные глаза"],
-                "Разница глаз": diff_eyes,
-                "Разница Теке": diff_teke,
-                "Разница Голый": diff_goly,
-                "Разница Яйца": diff_eggs,
-                "Разница Сокыр": diff_sokyr
+                "Разница глаз": v["Забитые глаза"] - v["Пропущенные глаза"],
+                "Разница Партий": v["[Партии] Выиграно"] - v["[Партии] Проиграно"],
+                "Разница Голых": v["[Голый] Выиграно"] - v["[Голый] Проиграно"],
+                "Разница Яиц": v["[Яйца] Повесили"] - v["[Яйца] Получили"],
+                "Разница Сокыра": v["[Сокыр] Выиграно"] - v["[Сокыр] Проиграно"]
             })
         df_pairs_all = pd.DataFrame(p_list)
-
-        sub_pair_tabs = st.tabs([
-            "📊 2.1. Средний балл", 
-            "📈 2.2. Набранные очки", 
-            "🐐 2.3. Лучшая разница Теке / Голый", 
-            "🥚 2.4. Лучшая разница Яиц", 
-            "👁️ 2.5. Лучшая разница Сокыра",
-            "👁️ 2.6. Лучшая разница по Глазам"
-        ])
-
-        with sub_pair_tabs[0]:
-            df_p_view = df_pairs_all[["Пара игроков", "Средний балл", "Игры"]].sort_values(by="Средний балл", ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
-        with sub_pair_tabs[1]:
-            df_p_view = df_pairs_all[["Пара игроков", "Очки", "Игры"]].sort_values(by="Очки", ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
-        with sub_pair_tabs[2]:
-            df_p_view = df_pairs_all[["Пара игроков", "Разница Теке", "Разница Голый", "Игры"]].sort_values(by=["Разница Теке", "Разница Голый"], ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
-        with sub_pair_tabs[3]:
-            df_p_view = df_pairs_all[["Пара игроков", "Разница Яйца", "Игры"]].sort_values(by="Разница Яйца", ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
-        with sub_pair_tabs[4]:
-            df_p_view = df_pairs_all[["Пара игроков", "Разница Сокыр", "Игры"]].sort_values(by="Разница Сокыр", ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
-        with sub_pair_tabs[5]:
-            df_p_view = df_pairs_all[["Пара игроков", "Разница глаз", "Забитые глаза", "Пропущенные глаза", "Игры"]].sort_values(by="Разница глаз", ascending=False).reset_index(drop=True)
-            df_p_view.index = df_p_view.index + 1
-            st.dataframe(df_p_view, use_container_width=True)
+        st.dataframe(df_pairs_all.sort_values(by="Очки", ascending=False).reset_index(drop=True), use_container_width=True)
     else:
-        st.info("Статистики парных сыгранных матчей пока нет.")
-
-# 6. ИСТОРИЯ ИГР
-with tab_history:
-    if st.session_state.games:
-        log_data = []
-        for i, g in enumerate(st.session_state.games, 1):
-            w_eyes = g.get("win_eyes", 12)
-            l_eyes = g.get("loss_eyes", 0)
-            log_data.append({
-                "Матч №": i, 
-                "Победители": f"{g['win_team'][0]}, {g['win_team'][1]}", 
-                "Проигравшие": f"{g['loss_team'][0]}, {g['loss_team'][1]}", 
-                "Счет по глазам": f"{w_eyes} : {l_eyes}",
-                "Статус": g.get("status"), 
-                "Очки победителям": f"+{g['win_points']}"
-            })
-        st.dataframe(pd.DataFrame(log_data)[::-1], use_container_width=True, hide_index=True)
-    else:
-        st.info("В этой Лиге еще нет сыгранных матчей.")
+        st.info("Статистики сыгранных парных матчей пока нет.")
 
 st.markdown("---")
 
@@ -528,14 +463,31 @@ with col_bottom1:
         
         st.markdown("---")
         
+        # Новый сортированный список по ТЗ
+        status = st.selectbox("Что дали?", ["Партия (2 очка)", "Голый (3 очка)", "Сокыр (12 очков)"])
+        eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
+
+        # Автоматические правила для глаз
+        if status == "Голый (3 очка)":
+            win_eyes_val = 12
+            loss_eyes_val = 0
+            disabled_eyes = True
+        else:
+            win_eyes_val = 12
+            loss_eyes_val = 4
+            disabled_eyes = False
+            
         col_e1, col_e2 = st.columns(2)
         with col_e1:
-            win_eyes_input = st.number_input("Глаза Победителей (всегда 12)", min_value=12, max_value=12, value=12, step=1)
+            # Если яйца, начисляем +4 глаза автоматически (12 + 4 = 16)
+            final_win_eyes = 16 if eggs else win_eyes_val
+            st.info(f"Глаза Победителей: {final_win_eyes}")
         with col_e2:
-            loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=4, step=1)
-            
-        status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
-        eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
+            if disabled_eyes:
+                loss_eyes_input = 0
+                st.info("Глаза Проигравших: 0")
+            else:
+                loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=loss_eyes_val, step=1)
         
         if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
             if match_password != "6666":
@@ -559,7 +511,7 @@ with col_bottom1:
                         str(eggs).upper(),           # eggs_happened
                         f"{status} {'+ Яйца' if eggs else ''}", # status_full
                         float(time.time()),          # timestamp
-                        int(win_eyes_input),         # win_eyes
+                        int(final_win_eyes),         # win_eyes
                         int(loss_eyes_input)         # loss_eyes
                     ])
                     st.success("Результат матча сохранен в Google Таблицу!")
@@ -569,6 +521,7 @@ with col_bottom1:
                 except Exception as e:
                     st.error(f"Ошибка сохранения: {e}")
 
+    # Корректировка результатов
     st.markdown("### 🛠️ Корректировка результатов")
     with st.expander("❌ Удалить конкретную игру по номеру", expanded=False):
         if st.session_state.games:
@@ -577,7 +530,7 @@ with col_bottom1:
             
             g_idx = selected_game_num - 1
             game_info = st.session_state.games[g_idx]
-            st.info(f"**Матч №{selected_game_num}:** Победители: {', '.join(game_info['win_team'])} | Проигравшие: {', '.join(game_info['loss_team'])} | Статус: {game_info.get('status')}")
+            st.info(f"**Матч №{selected_game_num}:** Победители: {', '.join(game_info['win_team'])} | Проигравшие: {', '.join(game_info['loss_team'])}")
             
             if st.button("УДАЛИТЬ ВЫБРАННЫЙ МАТЧ"):
                 if match_password != "6666":
@@ -600,7 +553,58 @@ with col_bottom1:
         else:
             st.info("База матчей пуста.")
 
+# --- УПРАВЛЕНИЕ УЧАСТНИКАМИ (БЕЗ НУМЕРАЦИИ) ---
 with col_bottom2:
-    st.markdown("### ⚙️ Участники Лиги")
-    st.info("Состав Лиги зафиксирован на 8 участников.")
-    st.dataframe(pd.DataFrame(st.session_state.players, columns=["Имя участника"]), use_container_width=True)
+    st.markdown("### 👥 Участники Лиги")
+    
+    # Список участников списком (без индекса Pandas)
+    st.write(pd.DataFrame(st.session_state.players, columns=["Имя участника"]).to_html(index=False), unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("#### ⚙️ Панель управления составом")
+    
+    manage_password = st.text_input("🔑 Пароль управления игроками:", type="password")
+    
+    # Добавление игрока
+    new_player_name = st.text_input("Имя нового участника:")
+    if st.button("Добавить участника"):
+        if manage_password != "6666":
+            st.error("Неверный пароль!")
+        elif not new_player_name.strip():
+            st.warning("Введите непустое имя.")
+        elif new_player_name.strip() in st.session_state.players:
+            st.warning("Такой игрок уже есть.")
+        else:
+            try:
+                sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                worksheet_p = sh.worksheet("players")
+                worksheet_p.append_row([new_player_name.strip()])
+                st.success(f"Игрок {new_player_name} успешно добавлен!")
+                st.cache_data.clear()
+                time.sleep(1)
+                st.rerun()
+            except Exception as e:
+                st.error(f"Ошибка сохранения: {e}")
+                
+    # Исключение игрока
+    player_to_remove = st.selectbox("Выберите игрока для исключения:", st.session_state.players)
+    if st.button("Исключить выбранного игрока"):
+        if manage_password != "6666":
+            st.error("Неверный пароль!")
+        else:
+            try:
+                sh = gc.open_by_url(st.secrets["spreadsheet_url"])
+                worksheet_p = sh.worksheet("players")
+                cells = worksheet_p.findall(player_to_remove)
+                if cells:
+                    # Удаляем строку с игроком
+                    row_idx = cells[0].row
+                    worksheet_p.delete_rows(row_idx)
+                    st.success(f"Игрок {player_to_remove} исключен из лиги.")
+                    st.cache_data.clear()
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Игрок не найден в таблице.")
+            except Exception as e:
+                st.error(f"Ошибка при удалении: {e}")

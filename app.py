@@ -3,9 +3,9 @@ import pandas as pd
 import gspread
 import time
 import itertools
-import requests  # Импорт библиотеки для отправки веб-запросов
+import requests
 
-# Настройка страницы (должна быть самой первой командой Streamlit)
+# Настройка страницы
 st.set_page_config(page_title="Лига Белки", layout="wide", page_icon="🏆")
 
 # --- СТИЛИЗАЦИЯ И ИНТЕРФЕЙС ---
@@ -32,7 +32,7 @@ st.markdown("""
         border: 2px solid #ffee55 !important;
         padding: 0.6rem 1rem !important;
     }
-    div.stForm stButton > button:hover, div.stButton > button:contains("СОХРАНИТЬ"):hover { 
+    div.stForm stButton > button:hover, div.stForm stButton > button:contains("СОХРАНИТЬ"):hover { 
         background-color: #e6b800 !important; 
         color: #000000 !important;
     }
@@ -65,7 +65,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Инициализация подключения через gspread
+# Инициализация подключения через gspread (ресурс кэшируем)
 @st.cache_resource
 def get_gspread_client():
     try:
@@ -79,18 +79,16 @@ def get_gspread_client():
         return None
 
 gc = get_gspread_client()
-
-# Дефолтный список участников
 DEFAULT_PLAYERS = ["Азирхан", "Аманат", "Данияр", "Елдар", "Мерхат", "Рустем", "Талгат", "Шынгыс"]
 
-@st.cache_data(ttl=1)  # Кэширование теперь настроено корректно после импорта
-def load_data_from_sheets():
+# НАДЁЖНАЯ ФУНКЦИЯ ЧТЕНИЯ (Без @st.cache_data, чтобы исключить зависание старых данных)
+def load_fresh_data():
     if gc is None:
         return DEFAULT_PLAYERS.copy(), []
     try:
         sh = gc.open_by_url(st.secrets["spreadsheet_url"])
         
-        # Загрузка игроков
+        # Загрузка списка игроков
         try:
             worksheet_p = sh.worksheet("players")
             players = [x for x in worksheet_p.col_values(1) if x and x != 'Имя']
@@ -99,13 +97,13 @@ def load_data_from_sheets():
         except:
             players = DEFAULT_PLAYERS.copy()
             
-        # Загрузка матчей
+        # Загрузка истории матчей
         try:
             worksheet_g = sh.worksheet("games")
             all_records = worksheet_g.get_all_records()
             df_g = pd.DataFrame(all_records)
             games = df_g.to_dict(orient='records') if not df_g.empty else []
-        except Exception as e:
+        except:
             games = []
             
         for g in games:
@@ -115,13 +113,22 @@ def load_data_from_sheets():
                 g['loss_team'] = [x.strip() for x in g['loss_team'].split(',')]
         return players, games
     except Exception as e:
-        st.error(f"Ошибка загрузки данных: {e}")
+        st.error(f"Ошибка сети при получении данных: {e}")
         return DEFAULT_PLAYERS.copy(), []
 
-# Загрузка актуальных данных
-players, games = load_data_from_sheets()
-st.session_state.players = players
-st.session_state.games = games
+# Инициализация сессии данных при первом запуске
+if "data_loaded" not in st.session_state or st.sidebar.button("🔄 Сбросить кэш приложения"):
+    p_fresh, g_fresh = load_fresh_data()
+    st.session_state.players = p_fresh
+    st.session_state.games = g_fresh
+    st.session_state.data_loaded = True
+
+# Удобная функция для принудительного обновления стейта
+def force_reload():
+    p_fresh, g_fresh = load_fresh_data()
+    st.session_state.players = p_fresh
+    st.session_state.games = g_fresh
+    st.rerun()
 
 # --- СИСТЕМА НАЧИСЛЕНИЯ ОЧКОВ ---
 POINTS_DICT = {
@@ -138,24 +145,17 @@ def calculate_match_points(status, eggs):
 def generate_balanced_schedule(player_list):
     if len(player_list) < 4:
         return []
-    
     all_pairs = list(itertools.combinations(player_list, 2))
     used_pairs = set()
     schedule = []
     tour_num = 1
-    
     max_attempts = 100
     for _ in range(max_attempts):
-        if len(used_pairs) >= len(all_pairs):
-            break
-        
+        if len(used_pairs) >= len(all_pairs): break
         available_pairs = [p for p in all_pairs if p not in used_pairs]
-        if len(available_pairs) < 2:
-            break
-            
+        if len(available_pairs) < 2: break
         tour_matches = []
         active_players_in_tour = set()
-        
         match1_found = False
         for p1 in available_pairs:
             for p2 in available_pairs:
@@ -167,12 +167,8 @@ def generate_balanced_schedule(player_list):
                     used_pairs.add(p2)
                     match1_found = True
                     break
-            if match1_found:
-                break
-                
-        if not match1_found:
-            break
-            
+            if match1_found: break
+        if not match1_found: break
         remaining_pairs = [p for p in available_pairs if p not in used_pairs and set(p).isdisjoint(active_players_in_tour)]
         match2_found = False
         for p3 in remaining_pairs:
@@ -183,27 +179,20 @@ def generate_balanced_schedule(player_list):
                     used_pairs.add(p4)
                     match2_found = True
                     break
-            if match2_found:
-                break
-                
+            if match2_found: break
         if len(tour_matches) >= 1:
             m1 = tour_matches[0]
             m2 = tour_matches[1] if len(tour_matches) > 1 else (None, None)
-            
             schedule.append({
-                "tour": tour_num,
-                "m1_p1": m1[0],
-                "m1_p2": m1[1],
-                "m2_p1": m2[0] if m2 else None,
-                "m2_p2": m2[1] if m2 else None
+                "tour": tour_num, "m1_p1": m1[0], "m1_p2": m1[1],
+                "m2_p1": m2[0] if m2 else None, "m2_p2": m2[1] if m2 else None
             })
             tour_num += 1
-            
     return schedule
 
 DYNAMIC_SCHEDULE = generate_balanced_schedule(st.session_state.players)
 
-# --- РАСЧЕТ СТАТИСТИКИ ---
+# --- РАСЧЕТ СТАТИСТИКИ И ГТТ ---
 stats = {p: {
     "Очки": 0, "Игры": 0, "Победы": 0, "Поражения": 0,
     "Забитые глаза": 0, "Пропущенные глаза": 0, "Разница глаз": 0,
@@ -220,9 +209,7 @@ for game in st.session_state.games:
         w_team = game.get("win_team", [])
         l_team = game.get("loss_team", [])
         if len(w_team) < 2 or len(l_team) < 2: continue
-        
-        if not (all(p in stats for p in w_team) and all(p in stats for p in l_team)):
-            continue
+        if not (all(p in stats for p in w_team) and all(p in stats for p in l_team)): continue
             
         win_pts = int(game.get("win_points", 0))
         loss_pts = int(game.get("loss_points", 0))
@@ -238,24 +225,19 @@ for game in st.session_state.games:
         ]:
             if pair not in pairs_stats:
                 pairs_stats[pair] = {
-                    "Очки": 0, "Игры": 0, "Победы": 0,
-                    "Забитые глаза": 0, "Пропущенные глаза": 0,
-                    "[Партии] Выиграно": 0, "[Партии] Проиграно": 0,
-                    "[Голый] Выиграно": 0, "[Голый] Проиграно": 0,
-                    "[Яйца] Повесили": 0, "[Яйца] Получили": 0,
-                    "[Сокыр] Выиграно": 0, "[Сокыр] Проиграно": 0
+                    "Очки": 0, "Игры": 0, "Победы": 0, "Забитые глаза": 0, "Пропущенные глаза": 0,
+                    "[Партии] Выиграно": 0, "[Партии] Проиграно": 0, "[Голый] Выиграно": 0, "[Голый] Проиграно": 0,
+                    "[Яйца] Повесили": 0, "[Яйца] Получили": 0, "[Сокыр] Выиграно": 0, "[Сокыр] Проиграно": 0
                 }
             pairs_stats[pair]["Очки"] += pts
             pairs_stats[pair]["Игры"] += 1
             pairs_stats[pair]["Забитые глаза"] += eyes_scored
             pairs_stats[pair]["Пропущенные глаза"] += eyes_conceded
-            if is_win:
-                pairs_stats[pair]["Победы"] += 1
+            if is_win: pairs_stats[pair]["Победы"] += 1
 
         raw_status = str(game.get("raw_status", ""))
         is_eggs = str(game.get("eggs_happened", "")).upper() in ["TRUE", "1", "ИСТИНА"]
 
-        # Победители
         for p in w_team:
             stats[p]["Очки"] += win_pts
             stats[p]["Игры"] += 1
@@ -275,7 +257,6 @@ for game in st.session_state.games:
                 stats[p]["[Яйца] Повесили"] += 1
                 pairs_stats[win_pair]["[Яйца] Повесили"] += 1
                 
-        # Проигравшие
         for p in l_team:
             stats[p]["Очки"] += loss_pts
             stats[p]["Игры"] += 1
@@ -297,7 +278,6 @@ for game in st.session_state.games:
     except:
         continue
 
-# Расчет разниц
 for p in stats:
     stats[p]["Разница глаз"] = stats[p]["Забитые глаза"] - stats[p]["Пропущенные глаза"]
     stats[p]["[Партии] Разница"] = stats[p]["[Партии] Выиграно"] - stats[p]["[Партии] Проиграно"]
@@ -308,16 +288,13 @@ for p in stats:
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
 df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
 
-# === ЭЛЕМЕНТЫ ИНТЕРФЕЙСА ===
 st.title("🏆 КЛАССИЧЕСКАЯ ЛИГА БЕЛКИ")
 
-if st.button("🔄 Обновить данные"):
-    st.cache_data.clear()
-    st.rerun()
+if st.button("🔄 Синхронизировать с Google Таблицей"):
+    force_reload()
 
 st.markdown("### 📊 Главная турнирная таблица (ГТТ)")
 
-# Упорядоченные колонки ГТТ по новому ТЗ (без Среднего балла)
 gtt_cols = [
     "Игрок", "Всего очков", "Сыграно игр",
     "[Партии] Выиграно", "[Партии] Проиграно", "[Партии] Разница",
@@ -327,17 +304,12 @@ gtt_cols = [
     "[Сокыр] Выиграно", "[Сокыр] Проиграно", "[Сокыр] Разница"
 ]
 
-# ИСПРАВЛЕНО: Сортировка больше не обращается к удаленному "Среднему баллу"
-df_main = df_leaderboard.sort_values(
-    by=["Всего очков", "Победы", "Разница глаз"], 
-    ascending=[False, False, False]
-)[gtt_cols].reset_index(drop=True)
+df_main = df_leaderboard.sort_values(by=["Всего очков", "Разница глаз"], ascending=[False, False])[gtt_cols].reset_index(drop=True)
 df_main.index = df_main.index + 1
 st.dataframe(df_main, use_container_width=True)
 
 st.markdown("---")
 
-# ГЛОБАЛЬНЫЕ ВКЛАДКИ
 tab_calendar, tab_positive, tab_negative, tab_pairs = st.tabs([
     "📅 Календарь и История", "🚀 Раздали (Выигрыши)", "📉 Словленные (Проигрыши)", "👥 Рейтинг связок"
 ])
@@ -345,7 +317,6 @@ tab_calendar, tab_positive, tab_negative, tab_pairs = st.tabs([
 # 1. ОБЪЕДИНЕННЫЙ КАЛЕНДАРЬ И ИСТОРИЯ
 with tab_calendar:
     st.markdown("#### Расписание туров и Результаты сыгранных встреч")
-    
     match_results = {}
     for g in st.session_state.games:
         try:
@@ -377,63 +348,36 @@ with tab_calendar:
             m2_text, res2 = "—", "—"
 
         sched_data.append({
-            "Тур": f"Тур {s['tour']}",
-            "Матч 1": m1_text,
-            "Результат Матча 1": res1,
-            "Матч 2": m2_text,
-            "Результат Матча 2": res2
+            "Тур": f"Тур {s['tour']}", "Матч 1": m1_text, "Результат Матча 1": res1, "Матч 2": m2_text, "Результат Матча 2": res2
         })
-        
     st.dataframe(pd.DataFrame(sched_data), use_container_width=True, hide_index=True)
 
-# 2. РАЗДАЛИ (ВЫИГРЫШИ)
+# 2, 3, 4 Вкладки статистики
 with tab_positive:
     sub_pos_tabs = st.tabs(["Партии", "Голый", "Яйца", "Сокыр", "Забитые Глаза"])
-    with sub_pos_tabs[0]:
-        st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[1]:
-        st.dataframe(df_leaderboard[["Игрок", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[2]:
-        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[3]:
-        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[4]:
-        st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[0]: st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[1]: st.dataframe(df_leaderboard[["Игrok", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[2]: st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[3]: st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[4]: st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)
 
-# 3. СЛОВЛЕННЫЕ (ПРОИГРЫШИ)
 with tab_negative:
     sub_neg_tabs = st.tabs(["Проиграно Партий", "Проиграно Голых", "Получили Яйца", "Проиграно Сокыров", "Пропущенные Глаза"])
-    with sub_neg_tabs[0]:
-        st.dataframe(df_leaderboard[["Игрок", "[Партии] Проиграно", "[Партии] Разница"]].sort_values(by="[Партии] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[1]:
-        st.dataframe(df_leaderboard[["Игрок", "[Голый] Проиграно", "[Голый] Разница"]].sort_values(by="[Голый] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[2]:
-        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Получили", "[Яйца] Разница"]].sort_values(by="[Яйца] Получили", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[3]:
-        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Проиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[4]:
-        st.dataframe(df_leaderboard[["Игрок", "Пропущенные глаза", "Разница глаз"]].sort_values(by="Пропущенные глаза", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[0]: st.dataframe(df_leaderboard[["Игрок", "[Партии] Проиграно", "[Партии] Разница"]].sort_values(by="[Партии] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[1]: st.dataframe(df_leaderboard[["Игрок", "[Голый] Проиграно", "[Голый] Разница"]].sort_values(by="[Голый] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[2]: st.dataframe(df_leaderboard[["Игрок", "[Яйца] Получили", "[Яйца] Разница"]].sort_values(by="[Яйца] Получили", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[3]: st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Проиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[4]: st.dataframe(df_leaderboard[["Игрок", "Пропущенные глаза", "Разница глаз"]].sort_values(by="Пропущенные глаза", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. РЕЙТИНГ СВЯЗОК
 with tab_pairs:
     if pairs_stats:
         p_list = []
         for k, v in pairs_stats.items():
             p_list.append({
-                "Пара игроков": f"{k[0]} 🤝 {k[1]}",
-                "Очки": v["Очки"],
-                "Игры": v["Игры"],
-                "Победы": v["Победы"],
-                "Забитые глаза": v["Забитые глаза"],
-                "Пропущенные глаза": v["Пропущенные глаза"],
-                "Разница глаз": v["Забитые глаза"] - v["Пропущенные глаза"],
-                "Разница Партий": v["[Партии] Выиграно"] - v["[Партии] Проиграно"],
-                "Разница Голых": v["[Голый] Выиграно"] - v["[Голый] Проиграно"],
-                "Разница Яиц": v["[Яйца] Повесили"] - v["[Яйца] Получили"],
-                "Разница Сокыра": v["[Сокыр] Выиграно"] - v["[Сокыр] Проиграно"]
+                "Пара игроков": f"{k[0]} 🤝 {k[1]}", "Очки": v["Очки"], "Игры": v["Игры"], "Победы": v["Победы"],
+                "Забитые глаза": v["Забитые глаза"], "Пропущенные глаза": v["Пропущенные глаза"], "Разница глаз": v["Забитые глаза"] - v["Пропущенные глаза"]
             })
-        df_pairs_all = pd.DataFrame(p_list)
-        st.dataframe(df_pairs_all.sort_values(by="Очки", ascending=False).reset_index(drop=True), use_container_width=True)
+        st.dataframe(pd.DataFrame(p_list).sort_values(by="Очки", ascending=False).reset_index(drop=True), use_container_width=True)
     else:
         st.info("Статистики сыгранных парных матчей пока нет.")
 
@@ -456,19 +400,13 @@ with col_bottom1:
             p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
         
         st.markdown("---")
-        
         status = st.selectbox("Что дали?", ["Партия (2 очка)", "Голый (3 очка)", "Сокыр (12 очков)"])
         eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
 
-        # Автоматические правила для глаз
         if status == "Голый (3 очка)":
-            win_eyes_val = 12
-            loss_eyes_val = 0
-            disabled_eyes = True
+            win_eyes_val, loss_eyes_val, disabled_eyes = 12, 0, True
         else:
-            win_eyes_val = 12
-            loss_eyes_val = 4
-            disabled_eyes = False
+            win_eyes_val, loss_eyes_val, disabled_eyes = 12, 4, False
             
         col_e1, col_e2 = st.columns(2)
         with col_e1:
@@ -494,46 +432,15 @@ with col_bottom1:
                     sh = gc.open_by_url(st.secrets["spreadsheet_url"])
                     worksheet_g = sh.worksheet("games")
                     
-                    # Жесткая очистка кэша перед записью данных
-                    st.cache_data.clear()
-                    
-                    # Отправка данных в Google Sheet
                     worksheet_g.append_row([
-                        f"{p1}, {p2}",               # win_team
-                        f"{p3}, {p4}",               # loss_team
-                        int(win_pts),                # win_points
-                        int(loss_pts),               # loss_points
-                        str(status),                 # status
-                        str(eggs).upper(),           # eggs_happened
-                        f"{status} {'+ Яйца' if eggs else ''}", # status_full
-                        float(time.time()),          # timestamp
-                        int(final_win_eyes),         # win_eyes
-                        int(loss_eyes_input)         # loss_eyes
+                        f"{p1}, {p2}", f"{p3}, {p4}", int(win_pts), int(loss_pts),
+                        str(status), str(eggs).upper(), f"{status} {'+ Яйца' if eggs else ''}",
+                        float(time.time()), int(final_win_eyes), int(loss_eyes_input)
                     ])
                     
-                    # ИСПРАВЛЕНО И БЕЗОПАСНО: Отправка внешнего уведомления (только если URL валиден)
-                    web_app_url = st.secrets.get("spreadsheet_url_sync")  # Безопасное чтение
-                    if web_app_url and web_app_url.startswith("http"):
-                        try:
-                            payload = {
-                                "win_team": f"{p1}, {p2}",
-                                "loss_team": f"{p3}, {p4}",
-                                "win_points": int(win_pts),
-                                "loss_points": int(loss_pts),
-                                "status": status,
-                                "eggs": eggs,
-                                "win_eyes": int(final_win_eyes),
-                                "loss_eyes": int(loss_eyes_input)
-                            }
-                            requests.post(web_app_url, json=payload, timeout=5)
-                        except Exception:
-                            pass # Игнорируем фоновые ошибки сети, чтобы не ломать запись
-                    
-                    # Финальный сброс кэша перед обновлением
-                    st.cache_data.clear()
-                    st.success("Результат матча сохранен в Google Таблицу!")
-                    time.sleep(1.5)
-                    st.rerun()
+                    st.success("Результат успешно занесен в облако!")
+                    time.sleep(1.0)
+                    force_reload()  # МГНОВЕННЫЙ СБРОС И ПЕРЕЗАГРУЗКА ДАННЫХ
                 except Exception as e:
                     st.error(f"Ошибка сохранения: {e}")
 
@@ -543,7 +450,6 @@ with col_bottom1:
         if st.session_state.games:
             game_numbers = list(range(1, len(st.session_state.games) + 1))
             selected_game_num = st.selectbox("Выберите номер матча для удаления:", game_numbers)
-            
             g_idx = selected_game_num - 1
             game_info = st.session_state.games[g_idx]
             st.info(f"**Матч №{selected_game_num}:** Победители: {', '.join(game_info['win_team'])} | Проигравшие: {', '.join(game_info['loss_team'])}")
@@ -551,74 +457,54 @@ with col_bottom1:
             if st.button("УДАЛИТЬ ВЫБРАННЫЙ МАТЧ"):
                 if match_password != "6666":
                     st.error("🔒 Введите пароль администратора!")
-                elif gc is None:
-                    st.error("Нет подключения к Google Таблицам.")
                 else:
                     try:
                         sh = gc.open_by_url(st.secrets["spreadsheet_url"])
                         worksheet_g = sh.worksheet("games")
-                        row_to_delete = selected_game_num + 1
-                        worksheet_g.delete_rows(row_to_delete)
-                        
-                        st.cache_data.clear()
-                        st.success(f"Матч №{selected_game_num} успешно удален!")
-                        time.sleep(1.5)
-                        st.rerun()
+                        worksheet_g.delete_rows(selected_game_num + 1)
+                        st.success("Матч успешно удален!")
+                        time.sleep(1.0)
+                        force_reload()
                     except Exception as e:
                         st.error(f"Ошибка удаления: {e}")
         else:
             st.info("База матчей пуста.")
 
-# --- УПРАВЛЕНИЕ УЧАСТНИКАМИ (БЕЗ НУМЕРАЦИИ) ---
+# --- УПРАВЛЕНИЕ УЧАСТНИКАМИ ---
 with col_bottom2:
     st.markdown("### 👥 Участники Лиги")
-    
     st.write(pd.DataFrame(st.session_state.players, columns=["Имя участника"]).to_html(index=False), unsafe_allow_html=True)
-    
     st.markdown("---")
     st.markdown("#### ⚙️ Панель управления составом")
-    
     manage_password = st.text_input("🔑 Пароль управления игроками:", type="password")
     
-    # Добавление игрока
     new_player_name = st.text_input("Имя нового участника:")
     if st.button("Добавить участника"):
-        if manage_password != "6666":
-            st.error("Неверный пароль!")
-        elif not new_player_name.strip():
-            st.warning("Введите непустое имя.")
-        elif new_player_name.strip() in st.session_state.players:
-            st.warning("Такой игрок уже есть.")
+        if manage_password != "6666": st.error("Неверный пароль!")
+        elif not new_player_name.strip(): st.warning("Введите имя.")
+        elif new_player_name.strip() in st.session_state.players: st.warning("Уже есть.")
         else:
             try:
                 sh = gc.open_by_url(st.secrets["spreadsheet_url"])
                 worksheet_p = sh.worksheet("players")
-                st.cache_data.clear()
                 worksheet_p.append_row([new_player_name.strip()])
-                st.success(f"Игрок {new_player_name} успешно добавлен!")
-                time.sleep(1.5)
-                st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка сохранения: {e}")
+                st.success("Игрок добавлен!")
+                time.sleep(1.0)
+                force_reload()
+            except Exception as e: st.error(f"Ошибка: {e}")
                 
-    # Исключение игрока
     player_to_remove = st.selectbox("Выберите игрока для исключения:", st.session_state.players)
     if st.button("Исключить выбранного игрока"):
-        if manage_password != "6666":
-            st.error("Неверный пароль!")
+        if manage_password != "6666": st.error("Неверный пароль!")
         else:
             try:
                 sh = gc.open_by_url(st.secrets["spreadsheet_url"])
                 worksheet_p = sh.worksheet("players")
                 cells = worksheet_p.findall(player_to_remove)
                 if cells:
-                    row_idx = cells[0].row
-                    st.cache_data.clear()
-                    worksheet_p.delete_rows(row_idx)
-                    st.success(f"Игрок {player_to_remove} исключен из лиги.")
-                    time.sleep(1.5)
-                    st.rerun()
-                else:
-                    st.error("Игрок не найден в таблице.")
-            except Exception as e:
-                st.error(f"Ошибка при удалении: {e}")
+                    worksheet_p.delete_rows(cells[0].row)
+                    st.success("Игрок исключен.")
+                    time.sleep(1.0)
+                    force_reload()
+                else: st.error("Не найден в таблице.")
+            except Exception as e: st.error(f"Ошибка: {e}")

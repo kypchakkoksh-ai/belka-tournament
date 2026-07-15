@@ -356,7 +356,8 @@ with tab_calendar:
 with tab_positive:
     sub_pos_tabs = st.tabs(["Партии", "Голый", "Яйца", "Сокыр", "Забитые Глаза"])
     with sub_pos_tabs[0]: st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[1]: st.dataframe(df_leaderboard[["Игrok", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+   # Стало (исправлено):
+with sub_pos_tabs[1]: st.dataframe(df_leaderboard[["Игрок", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[2]: st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[3]: st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
     with sub_pos_tabs[4]: st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)

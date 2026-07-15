@@ -1,4 +1,3 @@
-import streamlit as set_page_config
 import streamlit as st
 import pandas as pd
 import gspread
@@ -292,10 +291,13 @@ main_table_cols = [
     "Повесили Яйца", "Получили Яйца", "Разница Яйца",
     "Выигр. Сокыр", "Проигр. Сокыр", "Разница Сокыр"
 ]
-df_main = df_leaderboard[main_table_cols].sort_values(
+
+# ИСПРАВЛЕНИЕ БАГА: Сначала сортируем весь DataFrame (где есть колонка "Победы"), а потом выбираем отображаемые колонки
+df_main = df_leaderboard.sort_values(
     by=["Всего очков", "Победы", "Разница глаз", "Средний балл"], 
     ascending=[False, False, False, False]
-).reset_index(drop=True)
+)[main_table_cols].reset_index(drop=True)
+
 df_main.index = df_main.index + 1
 st.dataframe(df_main, use_container_width=True)
 

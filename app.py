@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -299,7 +299,7 @@ for p in stats:
 df_leaderboard = pd.DataFrame.from_dict(stats, orient='index').reset_index()
 df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
 
-# НАЗВАНИЕ ИЗМЕНЕНО НА "ЛИГА БЕЛКИ"
+# НАЗВАНИЕ: ЛИГА БЕЛКИ
 st.title("🏆 ЛИГА БЕЛКИ")
 
 if st.button("🔄 Синхронизировать с Google Таблицей"):
@@ -326,7 +326,7 @@ multi_df[("глаза", "выигр")] = df_sorted["глаза_выигр"]
 multi_df[("глаза", "проигр")] = df_sorted["глаза_проигр"]
 multi_df[("глаза", "разница")] = df_sorted["глаза_разница"]
 
-# Секция "голый" (ИКОНКА ЗАМЕНЕНА НА 🔥)
+# Секция "голый" (ИКОНКА 🔥)
 multi_df[("голый", "выигр")] = df_sorted["голый_выигр"]
 multi_df[("голый", "проигр")] = df_sorted["голый_проигр"]
 multi_df[("голый", "разница")] = df_sorted["голый_разница"]
@@ -348,7 +348,7 @@ st.dataframe(multi_df, use_container_width=True)
 
 st.markdown("---")
 
-# --- ОБНОВЛЕННАЯ СТРУКТУРА ВКЛАДОК АНАЛИТИКИ (ИКОНКА ЗАМЕНЕНА НА 🔥) ---
+# --- СТРУКТУРА ВКЛАДОК АНАЛИТИКИ ---
 tab_calendar, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
     "📅 Календарь и История", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
@@ -405,10 +405,10 @@ with tab_glaza:
     df_glaza.columns = ["Игрок", "Побед (Набрано)", "Проигрыш (Упущено)", "Разница"]
     st.dataframe(df_glaza.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. ГОЛЫЕ
+# 4. ГОЛЫЕ (Тут исправлена опечатка "Игrok" -> "Игрок")
 with tab_golye:
     st.markdown("#### Аналитика по Голым партиям")
-    df_golye = df_leaderboard[["Игrok", "голый_выигр", "голый_проигр", "голый_разница"]].copy()
+    df_golye = df_leaderboard[["Игрок", "голый_выигр", "голый_проигр", "голый_разница"]].copy()
     df_golye.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_golye.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
@@ -458,7 +458,7 @@ with col_bottom1:
             p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
         
         st.markdown("---")
-        status = st.selectbox("Что дали?", ["Партия (3 очка)", "Голый (2 очка)", "Сокыр (12 очков)"])
+        status = st.selectbox("What was dealt?", ["Партия (3 очка)", "Голый (2 очка)", "Сокыр (12 очков)"])
         eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
 
         if status == "Голый (2 очка)":
@@ -569,7 +569,7 @@ with col_bottom2:
                 else: st.error("Не найден в таблице.")
             except Exception as e: st.error(f"Ошибка: {e}")
 
-    # ТЕКСТА ОПАСНОЙ ЗОНЫ И ЦИФР ПАРОЛЯ БОЛЬШЕ НЕТ НА ЭКРАНЕ
+    # Сброс результатов
     st.markdown("---")
     st.markdown("#### Сброс результатов")
     reset_password = st.text_input("🔑 Введите ключ доступа для сброса:", type="password")

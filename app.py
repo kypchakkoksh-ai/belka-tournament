@@ -32,7 +32,7 @@ st.markdown("""
         border: 2px solid #ffee55 !important;
         padding: 0.6rem 1rem !important;
     }
-    div.stForm stButton > button:hover, div.stForm stButton > button:contains("СОХРАНИТЬ"):hover { 
+    div.stForm stButton > button:hover, div.stButton > button:contains("СОХРАНИТЬ"):hover { 
         background-color: #e6b800 !important; 
         color: #000000 !important;
     }
@@ -352,24 +352,35 @@ with tab_calendar:
         })
     st.dataframe(pd.DataFrame(sched_data), use_container_width=True, hide_index=True)
 
-# 2, 3, 4 Вкладки статистики
+# 2. РАЗДАЛИ (ВЫИГРЫШИ)
 with tab_positive:
     sub_pos_tabs = st.tabs(["Партии", "Голый", "Яйца", "Сокыр", "Забитые Глаза"])
-    with sub_pos_tabs[0]: st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-   # Стало (исправлено):
-with sub_pos_tabs[1]: st.dataframe(df_leaderboard[["Игрок", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[2]: st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[3]: st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_pos_tabs[4]: st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[0]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Партии] Выиграно", "[Партии] Разница"]].sort_values(by="[Партии] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[1]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Голый] Выиграно", "[Голый] Разница"]].sort_values(by="[Голый] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[2]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Повесили", "[Яйца] Разница"]].sort_values(by="[Яйца] Повесили", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[3]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Выиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Выиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_pos_tabs[4]: 
+        st.dataframe(df_leaderboard[["Игрок", "Забитые глаза", "Разница глаз"]].sort_values(by="Забитые глаза", ascending=False), use_container_width=True, hide_index=True)
 
+# 3. СЛОВЛЕННЫЕ (ПРОИГРЫШИ)
 with tab_negative:
     sub_neg_tabs = st.tabs(["Проиграно Партий", "Проиграно Голых", "Получили Яйца", "Проиграно Сокыров", "Пропущенные Глаза"])
-    with sub_neg_tabs[0]: st.dataframe(df_leaderboard[["Игрок", "[Партии] Проиграно", "[Партии] Разница"]].sort_values(by="[Партии] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[1]: st.dataframe(df_leaderboard[["Игрок", "[Голый] Проиграно", "[Голый] Разница"]].sort_values(by="[Голый] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[2]: st.dataframe(df_leaderboard[["Игрок", "[Яйца] Получили", "[Яйца] Разница"]].sort_values(by="[Яйца] Получили", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[3]: st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Проиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Проиграно", ascending=False), use_container_width=True, hide_index=True)
-    with sub_neg_tabs[4]: st.dataframe(df_leaderboard[["Игрок", "Пропущенные глаза", "Разница глаз"]].sort_values(by="Пропущенные глаза", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[0]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Партии] Проиграно", "[Партии] Разница"]].sort_values(by="[Партии] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[1]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Голый] Проиграно", "[Голый] Разница"]].sort_values(by="[Голый] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[2]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Яйца] Получили", "[Яйца] Разница"]].sort_values(by="[Яйца] Получили", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[3]: 
+        st.dataframe(df_leaderboard[["Игрок", "[Сокыр] Проиграно", "[Сокыр] Разница"]].sort_values(by="[Сокыр] Проиграно", ascending=False), use_container_width=True, hide_index=True)
+    with sub_neg_tabs[4]: 
+        st.dataframe(df_leaderboard[["Игрок", "Пропущенные глаза", "Разница глаз"]].sort_values(by="Пропущенные глаза", ascending=False), use_container_width=True, hide_index=True)
 
+# 4. РЕЙТИНГ СВЯЗОК
 with tab_pairs:
     if pairs_stats:
         p_list = []

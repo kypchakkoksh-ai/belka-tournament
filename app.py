@@ -1,3 +1,4 @@
+import streamlit as set_page_config
 import streamlit as st
 import pandas as pd
 import gspread
@@ -73,7 +74,7 @@ def get_gspread_client():
         gc = gspread.service_account_from_dict(credentials)
         return gc
     except Exception as e:
-        st.error(f"Ошибка авторизации: {e}")
+        st.error(f"Ошибка авторизации Google Sheets: {e}")
         return None
 
 gc = get_gspread_client()
@@ -100,9 +101,11 @@ def load_data_from_sheets():
         # Загрузка матчей
         try:
             worksheet_g = sh.worksheet("games")
-            df_g = pd.DataFrame(worksheet_g.get_all_records())
+            all_records = worksheet_g.get_all_records()
+            df_g = pd.DataFrame(all_records)
             games = df_g.to_dict(orient='records') if not df_g.empty else []
-        except:
+        except Exception as e:
+            st.warning(f"Не удалось загрузить историю игр (возможно, таблица пуста): {e}")
             games = []
             
         for g in games:
@@ -112,6 +115,7 @@ def load_data_from_sheets():
                 g['loss_team'] = [x.strip() for x in g['loss_team'].split(',')]
         return players, games
     except Exception as e:
+        st.error(f"Ошибка загрузки данных: {e}")
         return DEFAULT_PLAYERS.copy(), []
 
 # Загрузка актуальных данных
@@ -148,7 +152,7 @@ SCHEDULE_INDEXES = [
     {"tour": 14, "m1_w": [0, 5], "m1_l": [3, 4], "m2_w": [1, 4], "m2_l": [2, 7]}
 ]
 
-# --- РАСЧЕТ ПОДРОБНОЙ СТАТИСТИКИ (ЛИЧНАЯ И СВЯЗКИ) ---
+# --- РАСЧЕТ СТАТИСТИКИ ---
 stats = {p: {
     "Очки": 0, "Игры": 0, "Победы": 0, "Поражения": 0, "Средний балл": 0.0,
     "Забитые глаза": 0, "Пропущенные глаза": 0, "Разница глаз": 0,
@@ -170,8 +174,7 @@ for game in st.session_state.games:
         win_pts = int(game.get("win_points", 0))
         loss_pts = int(game.get("loss_points", 0))
         
-        # Получаем глаза (очки в партии), если они записаны в базе (колонки "win_eyes", "loss_eyes")
-        # Если старых записей нет, по дефолту ставим победителю 12, проигравшему 0
+        # Получаем глаза
         win_eyes = int(game.get("win_eyes", 12))
         loss_eyes = int(game.get("loss_eyes", 0))
 
@@ -251,7 +254,7 @@ for game in st.session_state.games:
     except:
         continue
 
-# Расчет разниц и средних баллов по игрокам
+# Расчет разниц по игрокам
 for p in stats:
     if stats[p]["Игры"] > 0:
         stats[p]["Средний балл"] = round(stats[p]["Очки"] / stats[p]["Игры"], 2)
@@ -281,8 +284,6 @@ if st.button("🔄 Обновить общую таблицу"):
 
 st.markdown("### 📊 Главная турнирная таблица")
 
-# Формируем главную таблицу с учетом глаз и правильной сортировки:
-# Сначала Всего очков -> Победы -> Разница глаз -> Средний балл
 main_table_cols = [
     "Игрок", "Всего очков", "Сыграно игр", "Средний балл",
     "Забитые глаза", "Пропущенные глаза", "Разница глаз",
@@ -322,7 +323,7 @@ with tab_sched:
 with tab_leader:
     st.dataframe(df_main, use_container_width=True)
 
-# 3. ВЫИГРЫШИ (Добавлены вкладки по глазам)
+# 3. ВЫИГРЫШИ
 with tab_positive:
     sub_pos_tabs = st.tabs([
         "🐐 Теке", "📊 Разница Теке", 
@@ -373,7 +374,7 @@ with tab_positive:
         df_view.index = df_view.index + 1
         st.dataframe(df_view, use_container_width=True)
 
-# 4. ПРОИГРЫШИ (Добавлены вкладки по глазам)
+# 4. ПРОИГРЫШИ
 with tab_negative:
     sub_neg_tabs = st.tabs([
         "🐐 Проигр. Теке", "📊 Разница Теке", 
@@ -424,7 +425,7 @@ with tab_negative:
         df_view.index = df_view.index + 1
         st.dataframe(df_view, use_container_width=True)
 
-# 5. РЕЙТИНГ СВЯЗОК (Добавлена Разница по глазам)
+# 5. РЕЙТИНГ СВЯЗОК
 with tab_pairs:
     if pairs_stats:
         p_list = []
@@ -525,17 +526,15 @@ with col_bottom1:
         
         st.markdown("---")
         
-        # Раздел ввода забитых глаз
         col_e1, col_e2 = st.columns(2)
         with col_e1:
-            win_eyes_input = st.number_input("Глаза Победителей (обычно 12)", min_value=12, max_value=12, value=12, step=1)
+            win_eyes_input = st.number_input("Глаза Победителей (всегда 12)", min_value=12, max_value=12, value=12, step=1)
         with col_e2:
             loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=4, step=1)
             
         status = st.selectbox("Что дали?", list(POINTS_DICT.keys()))
         eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
         
-        # Желтая контрастная кнопка
         if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
             if match_password != "6666":
                 st.error("🔒 Неверный пароль!")
@@ -549,7 +548,6 @@ with col_bottom1:
                     sh = gc.open_by_url(st.secrets["spreadsheet_url"])
                     worksheet_g = sh.worksheet("games")
                     
-                    # Записываем расширенный ряд данных в таблицу Google
                     worksheet_g.append_row([
                         f"{p1}, {p2}",               # win_team
                         f"{p3}, {p4}",               # loss_team
@@ -569,7 +567,6 @@ with col_bottom1:
                 except Exception as e:
                     st.error(f"Ошибка сохранения: {e}")
 
-    # --- КОРРЕКТИРОВКА ИГРЫ ---
     st.markdown("### 🛠️ Корректировка результатов")
     with st.expander("❌ Удалить конкретную игру по номеру", expanded=False):
         if st.session_state.games:
@@ -603,5 +600,5 @@ with col_bottom1:
 
 with col_bottom2:
     st.markdown("### ⚙️ Участники Лиги")
-    st.info("Состав Лиги зафиксирован на 8 участников. Изменения проводятся через Google Таблицу.")
+    st.info("Состав Лиги зафиксирован на 8 участников.")
     st.dataframe(pd.DataFrame(st.session_state.players, columns=["Имя участника"]), use_container_width=True)

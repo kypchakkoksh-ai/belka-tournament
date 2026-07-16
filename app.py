@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -141,68 +141,115 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 1, 0) if eggs else (base_points, 0)
 
-# --- ГЕНЕРАТОР ПОЛНОГО КЛАССИЧЕСКОГО РАСПИСАНИЯ НА ВСЕ 1260 МАТЧЕЙ ---
-def generate_all_1260_matches(player_list):
+
+# --- УМНЫЙ АЛГОРИТМ РАСПРЕДЕЛЕНИЯ 1260 УНИКАЛЬНЫХ МАТЧЕЙ ПО ЭТАПАМ И ТУРАМ ---
+@st.cache_data
+def generate_perfect_1260_schedule(player_list):
     """
-    Генерирует строго все 1260 уникальных противостояний пар для 9 игроков
-    и разбивает их на 70 этапов по 9 туров в каждом (2 матча в туре).
+    Генерирует все 1260 уникальных встреч 2х2 для 9 игроков.
+    Разбивает их на 70 этапов по 9 туров.
+    В каждом туре играют ровно 8 человек (2 матча), ровно 1 игрок отдыхает.
+    Игроки на лавке (пропускающие) распределяются абсолютно равномерно:
+    в каждом этапе каждый игрок отдыхает ровно 1 раз.
     """
     if len(player_list) != 9:
         return []
-        
+
+    # 1. Сгенерируем все уникальные матчи (1260 штук)
     all_possible_pairs = list(itertools.combinations(player_list, 2))
     all_unique_matches = []
-    
-    # Собираем абсолютно все уникальные пары на пары без пересечения игроков
     for i, pair1 in enumerate(all_possible_pairs):
         for pair2 in all_possible_pairs[i+1:]:
             if set(pair1).isdisjoint(set(pair2)):
-                all_unique_matches.append((tuple(sorted(pair1)), tuple(sorted(pair2))))
-                
-    # Сортируем для детерминированного распределения по этапам
-    all_unique_matches.sort()
-    
+                # Сохраняем как множество для удобства сравнения и исключения пересечений
+                all_unique_matches.append((frozenset(pair1), frozenset(pair2)))
+
+    # Множество еще не использованных матчей
+    unused_matches = set(all_unique_matches)
     schedule = []
-    match_index = 0
-    total_matches = len(all_unique_matches) # 1260
-    
-    # 70 этапов
+
+    # 2. Генерируем туры по этапам
     for stage in range(1, 71):
-        # В каждом этапе 9 туров
+        # Чтобы распределение пропускающих игроков было максимально честным, 
+        # каждый из 9 игроков должен пропустить ровно по 1 туру внутри этапа.
+        # Создаем список "пропускающих" на этот этап
+        bypass_queue = list(player_list) 
+        
         for tour in range(1, 10):
-            # В каждом туре играет 2 матча (8 игроков задействовано, 1 отдыхает)
-            m1, m2 = None, None
-            
-            if match_index < total_matches:
-                m1 = all_unique_matches[match_index]
-                match_index += 1
-            if match_index < total_matches:
-                m2 = all_unique_matches[match_index]
-                match_index += 1
+            # В этом туре отдыхает конкретный игрок
+            current_bypass = bypass_queue[tour - 1]
+            active_players_needed = set(player_list) - {current_bypass}
+
+            # Нам нужно найти 2 матча из неиспользованных, которые вовлекают ровно этих 8 активных игроков
+            m1_found, m2_found = None, None
+
+            # Ищем Матч 1, в котором играют только люди из active_players_needed
+            for match in unused_matches:
+                p1, p2 = match
+                match_players = p1.union(p2)
+                if match_players.issubset(active_players_needed):
+                    m1_found = match
+                    break
+
+            if m1_found:
+                # Из активных вычитаем тех, кто уже задействован в первом матче
+                m1_players = m1_found[0].union(m1_found[1])
+                remaining_active = active_players_needed - m1_players
                 
-            # Вычисляем, кто отдыхает в этом туре (игрок, который не попал ни в m1, ни в m2)
-            active_players = set()
-            if m1:
-                active_players.update(m1[0])
-                active_players.update(m1[1])
-            if m2:
-                active_players.update(m2[0])
-                active_players.update(m2[1])
-                
-            bypass_players = [p for p in player_list if p not in active_players]
-            bypass_info = ", ".join(bypass_players) if bypass_players else "Нет"
-            
+                # Ищем Матч 2 из оставшихся активных игроков
+                for match in unused_matches:
+                    if match == m1_found:
+                        continue
+                    p1, p2 = match
+                    match_players = p1.union(p2)
+                    if match_players == remaining_active:
+                        m2_found = match
+                        break
+
+            # Если пара матчей успешно найдена, удаляем их из пула неиспользованных
+            if m1_found and m2_found:
+                unused_matches.remove(m1_found)
+                unused_matches.remove(m2_found)
+            else:
+                # Экстренный откат/поиск (на случай дефицита комбинаций в самом конце пула)
+                # Берем любые подходящие матчи без пересечения
+                m1_found, m2_found = None, None
+                for match1 in list(unused_matches):
+                    p1_1, p1_2 = match1
+                    m1_players = p1_1.union(p1_2)
+                    if current_bypass not in m1_players:
+                        for match2 in list(unused_matches):
+                            if match1 == match2:
+                                continue
+                            p2_1, p2_2 = match2
+                            m2_players = p2_1.union(p2_2)
+                            if current_bypass not in m2_players and m1_players.isdisjoint(m2_players):
+                                m1_found = match1
+                                m2_found = match2
+                                break
+                        if m1_found and m2_found:
+                            break
+                if m1_found and m2_found:
+                    unused_matches.remove(m1_found)
+                    unused_matches.remove(m2_found)
+
+            # Конвертируем обратно в кортежи для вывода на экран
+            m1_p1_tuple = tuple(list(m1_found[0])) if m1_found else None
+            m1_p2_tuple = tuple(list(m1_found[1])) if m1_found else None
+            m2_p1_tuple = tuple(list(m2_found[0])) if m2_found else None
+            m2_p2_tuple = tuple(list(m2_found[1])) if m2_found else None
+
             schedule.append({
                 "stage": stage,
                 "tour": tour,
-                "bypass": bypass_info,
-                "m1_p1": m1[0] if m1 else None, "m1_p2": m1[1] if m1 else None,
-                "m2_p1": m2[0] if m2 else None, "m2_p2": m2[1] if m2 else None
+                "bypass": current_bypass,
+                "m1_p1": m1_p1_tuple, "m1_p2": m1_p2_tuple,
+                "m2_p1": m2_p1_tuple, "m2_p2": m2_p2_tuple
             })
-            
+
     return schedule
 
-DYNAMIC_SCHEDULE = generate_all_1260_matches(st.session_state.players)
+DYNAMIC_SCHEDULE = generate_perfect_1260_schedule(st.session_state.players)
 
 # --- РАСЧЕТ СТАТИСТИКИ И ТАБЛИЦЫ ---
 stats = {p: {
@@ -399,7 +446,7 @@ with tab_stages:
 
         stage_data.append({
             "Тур": f"Тур {s['tour']}", 
-            "Пропускает тур": s.get("bypass", "Нет"),
+            "Пропускает тур (Отдых)": s.get("bypass", "Нет"),
             "Матч 1": m1_text, 
             "Результат Матча 1": res1, 
             "Матч 2": m2_text, 

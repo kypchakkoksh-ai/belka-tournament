@@ -43,7 +43,7 @@ st.markdown("""
         font-weight: bold !important;
     }
     
-    /* Красные кнопки удаления/исклечения/сброса */
+    /* Красные кнопки удаления/исключения/сброса */
     button:contains("УДАЛИТЬ"), button:contains("Исключить"), button:contains("СБРОСИТЬ") {
         background-color: #b21f2d !important;
         color: #ffffff !important;
@@ -80,7 +80,7 @@ def get_gspread_client():
 
 gc = get_gspread_client()
 
-# Фиксированный список 10 игроков (порядок изменен для стабильности генератора)
+# Фиксированный список 10 игроков
 DEFAULT_PLAYERS = ["Данияр", "Азирхан", "Талгат", "Елдар", "Марат", "Рустем", "Аманат", "Мерхат", "Шынгыс", "Ерлан"]
 
 # НАДЁЖНАЯ ФУНКЦИЯ ЧТЕНИЯ ДАННЫХ
@@ -139,38 +139,65 @@ def calculate_match_points(status, eggs):
     return (base_points + 1, 0) if eggs else (base_points, 0)
 
 
-# --- ГЕНЕРАТОР ИДЕАЛЬНОГО БАЛАНСИРОВАННОГО РАСПИСАНИЯ (990 ИГР, 20 ЭТАПОВ) ---
+# --- ГЕНЕРАТОР РАСПИСАНИЯ С УЧЕТОМ УЖЕ СЫГРАННЫХ МАТЧЕЙ (990 МАТЧЕЙ, 20 ЭТАПОВ) ---
 @st.cache_data
-def generate_balanced_990_schedule(player_list):
+def generate_balanced_990_schedule_with_played(player_list):
     if len(player_list) != 10:
         return []
     
-    # Шаг 1: Создаем базовый набор из 630 уникальных комбинаций 2х2
+    # Жестко фиксируем 4 сыгранных матча
+    played_matches = [
+        (("Аманат", "Рустем"), ("Данияр", "Елдар")),
+        (("Марат", "Рустем"), ("Данияр", "Мерхат")),
+        (("Данияр", "Шынгыс"), ("Марат", "Мерхат")),
+        (("Данияр", "Марат"), ("Мерхат", "Шынгыс"))
+    ]
+    
+    # Приводим к кортежам отсортированных имен
+    played_normalized = []
+    for m in played_matches:
+        p1 = tuple(sorted(m[0]))
+        p2 = tuple(sorted(m[1]))
+        played_normalized.append((p1, p2) if p1 < p2 else (p2, p1))
+
+    # Шаг 1: Генерируем полный пул из 630 уникальных матчей
     all_quads = list(itertools.combinations(player_list, 4))
     base_630_matches = []
     for quad in all_quads:
         q = list(quad)
-        # 3 уникальных комбинации матча для каждых 4 игроков
-        base_630_matches.append((tuple(sorted([q[0], q[1]])), tuple(sorted([q[2], q[3]])) ))
-        base_630_matches.append((tuple(sorted([q[0], q[2]])), tuple(sorted([q[1], q[3]])) ))
-        base_630_matches.append((tuple(sorted([q[0], q[3]])), tuple(sorted([q[1], q[2]])) ))
-        
-    # Шаг 2: Расширяем массив до 990 матчей путем циклического добавления до нужного объема
-    extended_pool = []
+        combinations = [
+            (tuple(sorted([q[0], q[1]])), tuple(sorted([q[2], q[3]]))),
+            (tuple(sorted([q[0], q[2]])), tuple(sorted([q[1], q[3]]))),
+            (tuple(sorted([q[0], q[3]])), tuple(sorted([q[1], q[2]])))
+        ]
+        for pair1, pair2 in combinations:
+            match_item = (pair1, pair2) if pair1 < pair2 else (pair2, pair1)
+            base_630_matches.append(match_item)
+            
+    # Убираем сыгранные из общего пула, чтобы избежать дублирования на первом круге
+    remaining_pool = [m for m in base_630_matches if m not in played_normalized]
+    
+    # Шаг 2: Формируем итоговую последовательность на 990 игр
+    # Сначала идут сыгранные матчи
+    final_matches_pool = list(played_normalized)
+    
+    # Затем добавляем оставшиеся до завершения первого круга в 630 игр
+    final_matches_pool.extend(remaining_pool)
+    
+    # Дозаполняем оставшиеся до 990 матчей из бесконечного цикла базовых игр
     cycle_matches = itertools.cycle(base_630_matches)
-    for _ in range(990):
-        extended_pool.append(next(cycle_matches))
+    while len(final_matches_pool) < 990:
+        final_matches_pool.append(next(cycle_matches))
         
-    # Шаг 3: Распределяем 990 игр равномерно по 20 этапам
+    # Шаг 3: Распределяем игры по этапам (18 этапов по 50 матчей, последние 2 этапа по 45 матчей)
     schedule = []
     match_counter = 0
     
-    # 18 этапов будут содержать по 50 матчей, а последние 2 этапа по 45 матчей (Итого: 990 игр)
     for stage_idx in range(1, 21):
         games_in_this_stage = 45 if stage_idx >= 19 else 50
         
         for local_match_num in range(1, games_in_this_stage + 1):
-            m = extended_pool[match_counter]
+            m = final_matches_pool[match_counter]
             match_counter += 1
             
             schedule.append({
@@ -182,7 +209,7 @@ def generate_balanced_990_schedule(player_list):
             
     return schedule
 
-DYNAMIC_SCHEDULE = generate_balanced_990_schedule(st.session_state.players)
+DYNAMIC_SCHEDULE = generate_balanced_990_schedule_with_played(st.session_state.players)
 
 # --- ИНТЕРФЕЙС ---
 st.title("🏆 ЛИГА БЕЛКИ — БАЛАНСИРОВАННОЕ РАСПИСАНИЕ (20 ЭТАПОВ / 990 МАТЧЕЙ)")
@@ -367,7 +394,7 @@ tab_schedule, tab_leaderboard, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_
     "📅 Игры (Расписание этапа)", "🏆 Главная турнирная таблица", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
 
-# ВНКЛАДКА 1: ИГРЫ
+# ВКЛАДКА 1: ИГРЫ
 with tab_schedule:
     st.markdown(f"#### 📅 Расписание и сыгранные матчи {selected_stage}-го этапа")
     

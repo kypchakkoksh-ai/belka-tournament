@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm div.stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -31,9 +31,22 @@ st.markdown("""
         border: 2px solid #ffee55 !important;
         padding: 0.6rem 1rem !important;
     }
-    div.stForm stButton > button:hover, div.stForm stButton > button:contains("СОХРАНИТЬ"):hover { 
+    div.stForm div.stButton > button:contains("СОХРАНИТЬ"):hover { 
         background-color: #e6b800 !important; 
         color: #000000 !important;
+    }
+    
+    /* Сине-стальная кнопка для проверки истории встреч */
+    div.stForm div.stButton > button:contains("ПРОВЕРИТЬ") {
+        background-color: #2c3e50 !important;
+        color: #ffffff !important;
+        border: 2px solid #34495e !important;
+        width: 100% !important;
+        font-weight: bold !important;
+    }
+    div.stForm div.stButton > button:contains("ПРОВЕРИТЬ"):hover {
+        background-color: #1a252f !important;
+        color: #ffffff !important;
     }
     
     /* Зеленые кнопки действий */
@@ -252,7 +265,7 @@ for p in global_stats:
         global_stats[p][f"{tag}_разница"] = global_stats[p][f"{tag}_выигр"] - global_stats[p][f"{tag}_проигр"]
 
 
-# --- 🏆 ГЛАВНАЯ ТУРНИРНАЯ ТАБЛИЦА (ГТТ) ---
+# --- 🏆 ГЛАВНАЯ ТУРНИРНАЯ ТАБЛИЦА (ГТТ) — НА ВЕРХУ ---
 st.markdown("### 🏆 Главная турнирная таблица")
 
 df_leaderboard = pd.DataFrame.from_dict(global_stats, orient='index').reset_index()
@@ -387,7 +400,6 @@ with col_bottom1:
                 final_win_eyes = 12
                 st.info("Глаза Победителей: 12 (Голый)")
             else:
-                # В случае "Яиц" победители могут набрать и больше, разрешим ввод 12-16
                 final_win_eyes = st.number_input("Глаза Победителей (12-16)", min_value=12, max_value=16, value=default_win_eyes + (1 if eggs else 0), step=1)
         with col_e2:
             if disabled_eyes:
@@ -396,17 +408,42 @@ with col_bottom1:
             else:
                 loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=default_loss_eyes, step=1)
         
-        if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
-            # 1. Проверка пароля
+        st.markdown("---")
+        
+        # Две кнопки внутри одной формы
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            check_submitted = st.form_submit_button("🔍 ПРОВЕРИТЬ ИСТОРИЮ ВСТРЕЧ")
+        with col_btn2:
+            save_submitted = st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ")
+            
+        # 1. ЛОГИКА НАЖАТИЯ КНОПКИ «ПРОВЕРИТЬ»
+        if check_submitted:
+            if len({p1, p2, p3, p4}) < 4:
+                st.error("Ошибка проверки: Один и тот же игрок выбран на разных позициях!")
+            else:
+                form_team_win = frozenset([p1, p2])
+                form_team_loss = frozenset([p3, p4])
+                form_matchup_key = frozenset([form_team_win, form_team_loss])
+                
+                if form_matchup_key in played_matchups_db:
+                    duplicate_match_id = played_matchups_db[form_matchup_key]
+                    st.warning(
+                        f"📊 Матч уже состоялся! Состав {p1}+{p2} против {p3}+{p4} "
+                        f"уже играл ранее в **Матче №{duplicate_match_id}**."
+                    )
+                else:
+                    st.success(f"🟢 Чистая история! Пары {p1}+{p2} и {p3}+{p4} еще НЕ играли между собой.")
+
+        # 2. ЛОГИКА НАЖАТИЯ КНОПКИ «СОХРАНИТЬ»
+        if save_submitted:
             if match_password != "6666":
                 st.error("🔒 Неверный пароль!")
-            # 2. Проверка дублирования игроков внутри формы
             elif len({p1, p2, p3, p4}) < 4:
                 st.error("Ошибка: Один и тот же игрок выбран на разных позициях!")
             elif gc is None:
                 st.error("Ошибка подключения к Google Таблицам.")
             else:
-                # 3. ВАЛИДАЦИЯ ПОВТОРНОГО МАТЧА (Дубликат пар соперников)
                 form_team_win = frozenset([p1, p2])
                 form_team_loss = frozenset([p3, p4])
                 form_matchup_key = frozenset([form_team_win, form_team_loss])
@@ -418,7 +455,6 @@ with col_bottom1:
                         f"Состав участников {p1}+{p2} против {p3}+{p4} уже сыграл ранее в **Матче №{duplicate_match_id}**."
                     )
                 else:
-                    # Если проверки пройдены — сохраняем результат
                     win_pts, loss_pts = calculate_match_points(status, eggs)
                     try:
                         sh = gc.open_by_url(st.secrets["spreadsheet_url"])

@@ -160,7 +160,6 @@ global_stats = {p: {
 pairs_stats = {}
 
 # Список для хранения сыгранных парных пар соперников для быстрой валидации дубликатов
-# Хранит кортеж из двух замороженных множеств: (frozenset({игрок1, игрок2}), frozenset({игрок3, игрок4})) -> № матча
 played_matchups_db = {}
 
 # Чтение и расчет статистики по всем играм
@@ -253,14 +252,38 @@ for p in global_stats:
         global_stats[p][f"{tag}_разница"] = global_stats[p][f"{tag}_выигр"] - global_stats[p][f"{tag}_проигр"]
 
 
-# --- РАЗДЕЛ АНАЛИТИКИ (ВКЛАДКИ) ---
-st.markdown("### 📈 Игры и аналитика турнира")
+# --- 🏆 ГЛАВНАЯ ТУРНИРНАЯ ТАБЛИЦА (ГТТ) ---
+st.markdown("### 🏆 Главная турнирная таблица")
 
-tab_history, tab_leaderboard, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
-    "📜 История игр (Сыгранные матчи)", "🏆 Главная турнирная таблица", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
+df_leaderboard = pd.DataFrame.from_dict(global_stats, orient='index').reset_index()
+df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
+df_sorted = df_leaderboard.sort_values(by=["Всего очков", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
+
+multi_df = pd.DataFrame()
+multi_df[("", "Игрок")] = df_sorted["Игрок"]
+multi_df[("", "Всего очков")] = df_sorted["Всего очков"]
+multi_df[("", "Сыграно игр")] = df_sorted["Сыграно игр"]
+
+for tag in ["партия", "глаза", "голый", "яйца", "сокыр"]:
+    multi_df[(tag, "выигр")] = df_sorted[f"{tag}_выигр"]
+    multi_df[(tag, "проигр")] = df_sorted[f"{tag}_проигр"]
+    multi_df[(tag, "разница")] = df_sorted[f"{tag}_разница"]
+
+multi_df.columns = pd.MultiIndex.from_tuples(multi_df.columns)
+multi_df.index = multi_df.index + 1
+st.dataframe(multi_df, use_container_width=True)
+
+st.markdown("---")
+
+
+# --- РАЗДЕЛ АНАЛИТИКИ (ВКЛАДКИ) ---
+st.markdown("### 📈 Детальная статистика и история")
+
+tab_history, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
+    "📜 История игр (Сыгранные матчи)", "🃏 Статистика Партий", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
 
-# ВЕРНУЛИ ВМЕСТО РАСПИСАНИЯ ВКЛАДКУ С ИСТОРИЕЙ ИГР
+# ВКЛАДКА 1: ИСТОРИЯ ИГР
 with tab_history:
     st.markdown("#### 📜 Все сыгранные матчи лиги (по порядку внесения)")
     if st.session_state.games:
@@ -273,8 +296,6 @@ with tab_history:
                 loss_eyes = game.get("loss_eyes", 0)
                 status = game.get("status", "Партия")
                 
-                # Форматируем строку вывода игры
-                match_text = f"🏆 Матч {str(idx).zfill(2)}"
                 team_win_text = f"🟢 {w_team[0]} + {w_team[1]} ({win_eyes} гл.)"
                 team_loss_text = f"🔴 {l_team[0]} + {l_team[1]} ({loss_eyes} гл.)"
                 
@@ -290,29 +311,7 @@ with tab_history:
     else:
         st.info("В базе пока нет сыгранных матчей. Начните регистрацию ниже!")
 
-# ВКЛАДКА 2: ГЛАВНАЯ ТУРНИРНАЯ ТАБЛИЦА (ГТТ)
-with tab_leaderboard:
-    st.markdown("#### 🏆 Главная турнирная таблица")
-    
-    df_leaderboard = pd.DataFrame.from_dict(global_stats, orient='index').reset_index()
-    df_leaderboard.rename(columns={"index": "Игрок", "Очки": "Всего очков", "Игры": "Сыграно игр"}, inplace=True)
-    df_sorted = df_leaderboard.sort_values(by=["Всего очков", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
-
-    multi_df = pd.DataFrame()
-    multi_df[("", "Игрок")] = df_sorted["Игрок"]
-    multi_df[("", "Всего очков")] = df_sorted["Всего очков"]
-    multi_df[("", "Сыграно игр")] = df_sorted["Сыграно игр"]
-
-    for tag in ["партия", "глаза", "голый", "яйца", "сокыр"]:
-        multi_df[(tag, "выигр")] = df_sorted[f"{tag}_выигр"]
-        multi_df[(tag, "проигр")] = df_sorted[f"{tag}_проигр"]
-        multi_df[(tag, "разница")] = df_sorted[f"{tag}_разница"]
-
-    multi_df.columns = pd.MultiIndex.from_tuples(multi_df.columns)
-    multi_df.index = multi_df.index + 1
-    st.dataframe(multi_df, use_container_width=True)
-
-# ВКЛАДКИ АНАЛИТИКИ И СВЯЗОК
+# ДЕТАЛЬНЫЕ ВКЛАДКИ
 with tab_partii:
     st.dataframe(df_leaderboard[["Игрок", "партия_выигр", "партия_проигр", "партия_разница"]].rename(
         columns={"партия_выигр": "Побед", "партия_проигр": "Проигрыш", "партия_разница": "Разница"}
@@ -369,24 +368,33 @@ with col_bottom1:
             p4 = st.selectbox("Проигравший 2", st.session_state.players, index=3)
         
         st.markdown("---")
-        status = st.selectbox("What was dealt?", ["Партия (3 очка)", "Голый (3 очка)", "Сокыр (12 очков)"])
+        status = st.selectbox("Как завершилась игра?", ["Партия (3 очка)", "Голый (3 очка)", "Сокыр (12 очков)"])
         eggs = st.checkbox("Повесили «Яйца» (+1 очко победителю)")
 
+        # Логика интерактивного выбора глаз
         if status == "Голый (3 очка)":
-            win_eyes_val, loss_eyes_val, disabled_eyes = 12, 0, True
+            disabled_eyes = True
+            default_win_eyes = 12
+            default_loss_eyes = 0
         else:
-            win_eyes_val, loss_eyes_val, disabled_eyes = 12, 4, False
-            
+            disabled_eyes = False
+            default_win_eyes = 12
+            default_loss_eyes = 4
+
         col_e1, col_e2 = st.columns(2)
         with col_e1:
-            final_win_eyes = 16 if eggs else win_eyes_val
-            st.info(f"Глаза Победителей: {final_win_eyes}")
+            if disabled_eyes:
+                final_win_eyes = 12
+                st.info("Глаза Победителей: 12 (Голый)")
+            else:
+                # В случае "Яиц" победители могут набрать и больше, разрешим ввод 12-16
+                final_win_eyes = st.number_input("Глаза Победителей (12-16)", min_value=12, max_value=16, value=default_win_eyes + (1 if eggs else 0), step=1)
         with col_e2:
             if disabled_eyes:
                 loss_eyes_input = 0
-                st.info("Глаза Проигравших: 0")
+                st.info("Глаза Проигравших: 0 (Голый)")
             else:
-                loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=loss_eyes_val, step=1)
+                loss_eyes_input = st.number_input("Глаза Проигравших (0-11)", min_value=0, max_value=11, value=default_loss_eyes, step=1)
         
         if st.form_submit_button("СОХРАНИТЬ РЕЗУЛЬТАТ"):
             # 1. Проверка пароля

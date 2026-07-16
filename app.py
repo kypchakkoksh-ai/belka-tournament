@@ -322,7 +322,7 @@ for game in st.session_state.games:
             global_stats[p]["Игры"] += 1
             global_stats[p]["Победы"] += 1
             global_stats[p]["глаза_выигр"] += win_eyes
-            global_stats[p]["глаза_proигр"] = global_stats[p].get("глаза_проигр", 0) + loss_eyes  # Костыль для опечаток
+            global_stats[p]["глаза_proигр"] = global_stats[p].get("глаза_проигр", 0) + loss_eyes
             global_stats[p]["глаза_проигр"] += loss_eyes
             
             if is_this_stage_game:

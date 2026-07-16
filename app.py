@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -145,45 +145,29 @@ def calculate_match_points(status, eggs):
 # --- УМНЫЙ АЛГОРИТМ РАСПРЕДЕЛЕНИЯ 1260 УНИКАЛЬНЫХ МАТЧЕЙ ПО ЭТАПАМ И ТУРАМ ---
 @st.cache_data
 def generate_perfect_1260_schedule(player_list):
-    """
-    Генерирует все 1260 уникальных встреч 2х2 для 9 игроков.
-    Разбивает их на 70 этапов по 9 туров.
-    В каждом туре играют ровно 8 человек (2 матча), ровно 1 игрок отдыхает.
-    Игроки на лавке (пропускающие) распределяются абсолютно равномерно:
-    в каждом этапе каждый игрок отдыхает ровно 1 раз.
-    """
     if len(player_list) != 9:
         return []
 
-    # 1. Сгенерируем все уникальные матчи (1260 штук)
+    # Генерируем все уникальные матчи (1260 штук)
     all_possible_pairs = list(itertools.combinations(player_list, 2))
     all_unique_matches = []
     for i, pair1 in enumerate(all_possible_pairs):
         for pair2 in all_possible_pairs[i+1:]:
             if set(pair1).isdisjoint(set(pair2)):
-                # Сохраняем как множество для удобства сравнения и исключения пересечений
                 all_unique_matches.append((frozenset(pair1), frozenset(pair2)))
 
-    # Множество еще не использованных матчей
     unused_matches = set(all_unique_matches)
     schedule = []
 
-    # 2. Генерируем туры по этапам
     for stage in range(1, 71):
-        # Чтобы распределение пропускающих игроков было максимально честным, 
-        # каждый из 9 игроков должен пропустить ровно по 1 туру внутри этапа.
-        # Создаем список "пропускающих" на этот этап
         bypass_queue = list(player_list) 
         
         for tour in range(1, 10):
-            # В этом туре отдыхает конкретный игрок
             current_bypass = bypass_queue[tour - 1]
             active_players_needed = set(player_list) - {current_bypass}
 
-            # Нам нужно найти 2 матча из неиспользованных, которые вовлекают ровно этих 8 активных игроков
             m1_found, m2_found = None, None
 
-            # Ищем Матч 1, в котором играют только люди из active_players_needed
             for match in unused_matches:
                 p1, p2 = match
                 match_players = p1.union(p2)
@@ -192,11 +176,9 @@ def generate_perfect_1260_schedule(player_list):
                     break
 
             if m1_found:
-                # Из активных вычитаем тех, кто уже задействован в первом матче
                 m1_players = m1_found[0].union(m1_found[1])
                 remaining_active = active_players_needed - m1_players
                 
-                # Ищем Матч 2 из оставшихся активных игроков
                 for match in unused_matches:
                     if match == m1_found:
                         continue
@@ -206,13 +188,11 @@ def generate_perfect_1260_schedule(player_list):
                         m2_found = match
                         break
 
-            # Если пара матчей успешно найдена, удаляем их из пула неиспользованных
             if m1_found and m2_found:
                 unused_matches.remove(m1_found)
                 unused_matches.remove(m2_found)
             else:
-                # Экстренный откат/поиск (на случай дефицита комбинаций в самом конце пула)
-                # Берем любые подходящие матчи без пересечения
+                # Экстренный поиск на всякий случай
                 m1_found, m2_found = None, None
                 for match1 in list(unused_matches):
                     p1_1, p1_2 = match1
@@ -233,7 +213,6 @@ def generate_perfect_1260_schedule(player_list):
                     unused_matches.remove(m1_found)
                     unused_matches.remove(m2_found)
 
-            # Конвертируем обратно в кортежи для вывода на экран
             m1_p1_tuple = tuple(list(m1_found[0])) if m1_found else None
             m1_p2_tuple = tuple(list(m1_found[1])) if m1_found else None
             m2_p1_tuple = tuple(list(m2_found[0])) if m2_found else None
@@ -353,145 +332,147 @@ st.title("🏆 ЛИГА БЕЛКИ")
 if st.button("🔄 Синхронизировать с Google Таблицей"):
     force_reload()
 
-st.markdown("### 📊 Общая турнирная таблица")
+# --- 1. ПЕРВЫЙ ПЛАН: ТАБЛИЦА ТЕКУЩЕГО ЭТАПА ---
+st.markdown("### 📅 Календарь текущего этапа турнира")
 
-# Сортируем данные
-df_sorted = df_leaderboard.sort_values(by=["Всего очков", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
+# Кэшируем результаты сыгранных матчей для быстрой сверки
+match_results = {}
+for g in st.session_state.games:
+    try:
+        wt = sorted(g['win_team'])
+        lt = sorted(g['loss_team'])
+        key = (tuple(wt), tuple(lt))
+        match_results[key] = f"🟢 {wt[0]}+{wt[1]} ({g['win_eyes']} гл.) vs 🔴 {lt[0]}+{lt[1]} ({g['loss_eyes']} гл.) [{g['status']}]"
+    except:
+        continue
 
-# Формируем плоский DataFrame для создания мультииндекса
-multi_df = pd.DataFrame()
-multi_df[("", "Игрок")] = df_sorted["Игрок"]
-multi_df[("", "Всего очков")] = df_sorted["Всего очков"]
-multi_df[("", "Сыграно игр")] = df_sorted["Сыграно игр"]
+# Выбор этапа
+selected_stage = st.selectbox("Выберите этап для просмотра расписания и игр:", list(range(1, 71)), index=0)
 
-# Секция "партия"
-multi_df[("партия", "выигр")] = df_sorted["партия_выигр"]
-multi_df[("партия", "проигр")] = df_sorted["партия_проигр"]
-multi_df[("партия", "разница")] = df_sorted["партия_разница"]
+# Фильтруем расписание по выбранному этапу
+stage_schedule = [s for s in DYNAMIC_SCHEDULE if s["stage"] == selected_stage]
 
-# Секция "глаза"
-multi_df[("глаза", "выигр")] = df_sorted["глаза_выигр"]
-multi_df[("глаза", "проигр")] = df_sorted["глаза_проигр"]
-multi_df[("глаза", "разница")] = df_sorted["глаза_разница"]
+stage_data = []
+for s in stage_schedule:
+    # Матч 1
+    if s['m1_p1'] and s['m1_p2']:
+        pair1_1 = sorted(s['m1_p1'])
+        pair1_2 = sorted(s['m1_p2'])
+        key1 = (tuple(pair1_1), tuple(pair1_2))
+        res1 = match_results.get(key1, match_results.get((tuple(pair1_2), tuple(pair1_1)), "Предстоит сыграть"))
+        m1_text = f"{pair1_1[0]} + {pair1_1[1]} 🆚 {pair1_2[0]} + {pair1_2[1]}"
+    else:
+        m1_text, res1 = "—", "—"
 
-# Секция "голый" (ИКОНКА 🔥)
-multi_df[("голый", "выигр")] = df_sorted["голый_выигр"]
-multi_df[("голый", "проигр")] = df_sorted["голый_проигр"]
-multi_df[("голый", "разница")] = df_sorted["голый_разница"]
+    # Матч 2
+    if s['m2_p1'] and s['m2_p2']:
+        pair2_1 = sorted(s['m2_p1'])
+        pair2_2 = sorted(s['m2_p2'])
+        key2 = (tuple(pair2_1), tuple(pair2_2))
+        res2 = match_results.get(key2, match_results.get((tuple(pair2_2), tuple(pair2_1)), "Предстоит сыграть"))
+        m2_text = f"{pair2_1[0]} + {pair2_1[1]} 🆚 {pair2_2[0]} + {pair2_2[1]}"
+    else:
+        m2_text, res2 = "—", "—"
 
-# Секция "яйца"
-multi_df[("яйца", "выигр")] = df_sorted["яйца_выигр"]
-multi_df[("яйца", "проигр")] = df_sorted["яйца_проигр"]
-multi_df[("яйца", "разница")] = df_sorted["яйца_разница"]
-
-# Секция "сокыр"
-multi_df[("сокыр", "выигр")] = df_sorted["сокыр_выигр"]
-multi_df[("сокыр", "проигр")] = df_sorted["сокыр_проигр"]
-multi_df[("сокыр", "разница")] = df_sorted["сокыр_разница"]
-
-multi_df.columns = pd.MultiIndex.from_tuples(multi_df.columns)
-multi_df.index = multi_df.index + 1
-
-st.dataframe(multi_df, use_container_width=True)
+    stage_data.append({
+        "Тур": f"Тур {s['tour']}", 
+        "Пропускает тур (Отдых)": s.get("bypass", "Нет"),
+        "Матч 1": m1_text, 
+        "Результат Матча 1": res1, 
+        "Матч 2": m2_text, 
+        "Результат Матча 2": res2
+    })
+    
+st.dataframe(pd.DataFrame(stage_data), use_container_width=True, hide_index=True)
 
 st.markdown("---")
 
-# --- СТРУКТУРА ВКЛАДОК АНАЛИТИКИ (Добавлена вкладка этапов) ---
-tab_stages, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
-    "📅 Этапы и Результаты", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
+# --- 2. РАЗДЕЛ АНАЛИТИКИ (ВКЛАДКИ) ---
+st.markdown("### 📊 Раздел аналитики")
+
+tab_leaderboard, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
+    "🏆 Главная турнирная таблица", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
 
-# 1. ВКЛАДКА ТАБЛИЦЫ ЭТАПОВ С РЕЗУЛЬТАТАМИ
-with tab_stages:
-    st.markdown("#### 🏆 Календарь этапов турнира")
+# ВКЛАДКА 1: ГЛАВНАЯ ТУРНИРНАЯ ТАБЛИЦА
+with tab_leaderboard:
+    st.markdown("#### 🏆 Главная турнирная таблица (Все этапы)")
     
-    # Кэшируем результаты сыгранных матчей для быстрой сверки
-    match_results = {}
-    for g in st.session_state.games:
-        try:
-            wt = sorted(g['win_team'])
-            lt = sorted(g['loss_team'])
-            key = (tuple(wt), tuple(lt))
-            match_results[key] = f"🟢 {wt[0]}+{wt[1]} ({g['win_eyes']} гл.) vs 🔴 {lt[0]}+{lt[1]} ({g['loss_eyes']} гл.) [{g['status']}]"
-        except:
-            continue
+    # Сортируем данные
+    df_sorted = df_leaderboard.sort_values(by=["Всего очков", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
 
-    # Выбор этапа
-    selected_stage = st.selectbox("Выберите этап для просмотра:", list(range(1, 71)), index=0)
-    
-    # Фильтруем расписание по выбранному этапу
-    stage_schedule = [s for s in DYNAMIC_SCHEDULE if s["stage"] == selected_stage]
-    
-    stage_data = []
-    for s in stage_schedule:
-        # Матч 1
-        if s['m1_p1'] and s['m1_p2']:
-            pair1_1 = sorted(s['m1_p1'])
-            pair1_2 = sorted(s['m1_p2'])
-            key1 = (tuple(pair1_1), tuple(pair1_2))
-            res1 = match_results.get(key1, match_results.get((tuple(pair1_2), tuple(pair1_1)), "Предстоит сыграть"))
-            m1_text = f"{pair1_1[0]} + {pair1_1[1]} 🆚 {pair1_2[0]} + {pair1_2[1]}"
-        else:
-            m1_text, res1 = "—", "—"
+    # Формируем плоский DataFrame для создания мультииндекса
+    multi_df = pd.DataFrame()
+    multi_df[("", "Игрок")] = df_sorted["Игрок"]
+    multi_df[("", "Всего очков")] = df_sorted["Всего очков"]
+    multi_df[("", "Сыграно игр")] = df_sorted["Сыграно игр"]
 
-        # Матч 2
-        if s['m2_p1'] and s['m2_p2']:
-            pair2_1 = sorted(s['m2_p1'])
-            pair2_2 = sorted(s['m2_p2'])
-            key2 = (tuple(pair2_1), tuple(pair2_2))
-            res2 = match_results.get(key2, match_results.get((tuple(pair2_2), tuple(pair2_1)), "Предстоит сыграть"))
-            m2_text = f"{pair2_1[0]} + {pair2_1[1]} 🆚 {pair2_2[0]} + {pair2_2[1]}"
-        else:
-            m2_text, res2 = "—", "—"
+    # Секция "партия"
+    multi_df[("партия", "выигр")] = df_sorted["партия_выигр"]
+    multi_df[("партия", "проигр")] = df_sorted["партия_проигр"]
+    multi_df[("партия", "разница")] = df_sorted["партия_разница"]
 
-        stage_data.append({
-            "Тур": f"Тур {s['tour']}", 
-            "Пропускает тур (Отдых)": s.get("bypass", "Нет"),
-            "Матч 1": m1_text, 
-            "Результат Матча 1": res1, 
-            "Матч 2": m2_text, 
-            "Результат Матча 2": res2
-        })
-        
-    st.markdown(f"##### 📊 Расписание матчей: Этап {selected_stage} из 70")
-    st.dataframe(pd.DataFrame(stage_data), use_container_width=True, hide_index=True)
+    # Секция "глаза"
+    multi_df[("глаза", "выигр")] = df_sorted["глаза_выигр"]
+    multi_df[("глаза", "проигр")] = df_sorted["глаза_проигр"]
+    multi_df[("глаза", "разница")] = df_sorted["глаза_разница"]
 
-# 2. ПАРТИИ
+    # Секция "голый"
+    multi_df[("голый", "выигр")] = df_sorted["голый_выигр"]
+    multi_df[("голый", "проигр")] = df_sorted["голый_проигр"]
+    multi_df[("голый", "разница")] = df_sorted["голый_разница"]
+
+    # Секция "яйца"
+    multi_df[("яйца", "выигр")] = df_sorted["яйца_выигр"]
+    multi_df[("яйца", "проигр")] = df_sorted["яйца_проигр"]
+    multi_df[("яйца", "разница")] = df_sorted["яйца_разница"]
+
+    # Секция "сокыр"
+    multi_df[("сокыр", "выигр")] = df_sorted["сокыр_выигр"]
+    multi_df[("сокыр", "проигр")] = df_sorted["сокыр_проигр"]
+    multi_df[("сокыр", "разница")] = df_sorted["сокыр_разница"]
+
+    multi_df.columns = pd.MultiIndex.from_tuples(multi_df.columns)
+    multi_df.index = multi_df.index + 1
+
+    st.dataframe(multi_df, use_container_width=True)
+
+# ВКЛАДКА 2: ПАРТИИ
 with tab_partii:
     st.markdown("#### Аналитика по Партиям")
     df_partii = df_leaderboard[["Игрок", "партия_выигр", "партия_проигр", "партия_разница"]].copy()
     df_partii.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_partii.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 3. ГЛАЗА
+# ВКЛАДКА 3: ГЛАЗА
 with tab_glaza:
     st.markdown("#### Аналитика по набранным и упущенным глазам")
     df_glaza = df_leaderboard[["Игрок", "глаза_выигр", "глаза_проигр", "глаза_разница"]].copy()
     df_glaza.columns = ["Игрок", "Побед (Набрано)", "Проигрыш (Упущено)", "Разница"]
     st.dataframe(df_glaza.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. ГОЛЫЕ
+# ВКЛАДКА 4: ГОЛЫЕ
 with tab_golye:
     st.markdown("#### Аналитика по Голым партиям")
     df_golye = df_leaderboard[["Игрок", "голый_выигр", "голый_проигр", "голый_разница"]].copy()
     df_golye.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_golye.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 5. ЯЙЦА
+# ВКЛАДКА 5: ЯЙЦА
 with tab_yaica:
     st.markdown("#### Аналитика по повешенным и пойманным Яйцам")
     df_yaica = df_leaderboard[["Игрок", "яйца_выигр", "яйца_проигр", "яйца_разница"]].copy()
     df_yaica.columns = ["Игрок", "Побед (Повесили)", "Проигрыш (Получили)", "Разница"]
     st.dataframe(df_yaica.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 6. СОКЫРЫ
+# ВКЛАДКА 6: СОКЫРЫ
 with tab_sokyry:
     st.markdown("#### Аналитика по партиям вслепую (Сокыр)")
     df_sokyry = df_leaderboard[["Игрок", "сокыр_выигр", "сокыр_проигр", "сокыр_разница"]].copy()
     df_sokyry.columns = ["Игрок", "Побед", "Проигрыш", "Разница"]
     st.dataframe(df_sokyry.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 7. РЕЙТИНГ СВЯЗОК
+# ВКЛАДКА 7: РЕЙТИНГ СВЯЗОК
 with tab_pairs:
     if pairs_stats:
         p_list = []

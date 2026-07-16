@@ -21,7 +21,7 @@ st.markdown("""
     }
     
     /* Контрастная желтая кнопка сохранения */
-    div.stForm stButton > button, div.stButton > button:contains("СОХРАНИТЬ") {
+    div.stForm stButton > button, div.stForm stButton > button:contains("СОХРАНИТЬ") {
         width: 100% !important;
         background-color: #ffcc00 !important;
         color: #000000 !important;
@@ -79,7 +79,7 @@ def get_gspread_client():
         return None
 
 gc = get_gspread_client()
-DEFAULT_PLAYERS = ["Азирхан", "Аманат", "Данияр", "Елдар", "Мерхат", "Рустем", "Талгат", "Шынгыс"]
+DEFAULT_PLAYERS = ["Азирхан", "Аманат", "Данияр", "Елдар", "Мерхат", "Рустем", "Талгат", "Шынгыс", "Марат"]
 
 # НАДЁЖНАЯ ФУНКЦИЯ ЧТЕНИЯ
 def load_fresh_data():
@@ -141,67 +141,68 @@ def calculate_match_points(status, eggs):
     base_points = POINTS_DICT[status]
     return (base_points + 1, 0) if eggs else (base_points, 0)
 
-# --- АЛГОРИТМ ГЕНЕРАЦИИ СБАЛАНСИРОВАННОГО КАЛЕНДАРЯ НА 1 КРУГ ВСТРЕЧ ---
-def generate_balanced_schedule(player_list):
-    if len(player_list) < 4:
+# --- ГЕНЕРАТОР ПОЛНОГО КЛАССИЧЕСКОГО РАСПИСАНИЯ НА ВСЕ 1260 МАТЧЕЙ ---
+def generate_all_1260_matches(player_list):
+    """
+    Генерирует строго все 1260 уникальных противостояний пар для 9 игроков
+    и разбивает их на 70 этапов по 9 туров в каждом (2 матча в туре).
+    """
+    if len(player_list) != 9:
         return []
+        
     all_possible_pairs = list(itertools.combinations(player_list, 2))
-    all_possible_matches = []
+    all_unique_matches = []
     
-    # Чтобы пары не играли дважды, сохраняем уникальные противостояния дуэтов
-    seen_pair_matchups = set()
-    
+    # Собираем абсолютно все уникальные пары на пары без пересечения игроков
     for i, pair1 in enumerate(all_possible_pairs):
         for pair2 in all_possible_pairs[i+1:]:
             if set(pair1).isdisjoint(set(pair2)):
-                matchup = tuple(sorted([tuple(sorted(pair1)), tuple(sorted(pair2))]))
-                if matchup not in seen_pair_matchups:
-                    seen_pair_matchups.add(matchup)
-                    all_possible_matches.append((tuple(sorted(pair1)), tuple(sorted(pair2))))
+                all_unique_matches.append((tuple(sorted(pair1)), tuple(sorted(pair2))))
                 
+    # Сортируем для детерминированного распределения по этапам
+    all_unique_matches.sort()
+    
     schedule = []
-    used_matches = set()
-    tour_num = 1
-    max_tours = 100
-    for _ in range(max_tours):
-        available_matches = [m for m in all_possible_matches if m not in used_matches]
-        if not available_matches:
-            break
+    match_index = 0
+    total_matches = len(all_unique_matches) # 1260
+    
+    # 70 этапов
+    for stage in range(1, 71):
+        # В каждом этапе 9 туров
+        for tour in range(1, 10):
+            # В каждом туре играет 2 матча (8 игроков задействовано, 1 отдыхает)
+            m1, m2 = None, None
             
-        tour_matches = []
-        active_players_in_tour = set()
-        for match in available_matches:
-            p1, p2 = match
-            match_players = set(p1 + p2)
-            if match_players.isdisjoint(active_players_in_tour):
-                tour_matches.append(match)
-                active_players_in_tour.update(match_players)
-                used_matches.add(match)
-                break
+            if match_index < total_matches:
+                m1 = all_unique_matches[match_index]
+                match_index += 1
+            if match_index < total_matches:
+                m2 = all_unique_matches[match_index]
+                match_index += 1
                 
-        if len(tour_matches) == 1:
-            remaining_available = [m for m in available_matches if m not in used_matches]
-            for match in remaining_available:
-                p3, p4 = match
-                match_players = set(p3 + p4)
-                if match_players.isdisjoint(active_players_in_tour):
-                    tour_matches.append(match)
-                    used_matches.add(match)
-                    break
-                    
-        if len(tour_matches) > 0:
-            m1 = tour_matches[0]
-            m2 = tour_matches[1] if len(tour_matches) > 1 else (None, None)
+            # Вычисляем, кто отдыхает в этом туре (игрок, который не попал ни в m1, ни в m2)
+            active_players = set()
+            if m1:
+                active_players.update(m1[0])
+                active_players.update(m1[1])
+            if m2:
+                active_players.update(m2[0])
+                active_players.update(m2[1])
+                
+            bypass_players = [p for p in player_list if p not in active_players]
+            bypass_info = ", ".join(bypass_players) if bypass_players else "Нет"
+            
             schedule.append({
-                "tour": tour_num, 
-                "m1_p1": m1[0], "m1_p2": m1[1],
+                "stage": stage,
+                "tour": tour,
+                "bypass": bypass_info,
+                "m1_p1": m1[0] if m1 else None, "m1_p2": m1[1] if m1 else None,
                 "m2_p1": m2[0] if m2 else None, "m2_p2": m2[1] if m2 else None
             })
-            tour_num += 1
             
     return schedule
 
-DYNAMIC_SCHEDULE = generate_balanced_schedule(st.session_state.players)
+DYNAMIC_SCHEDULE = generate_all_1260_matches(st.session_state.players)
 
 # --- РАСЧЕТ СТАТИСТИКИ И ТАБЛИЦЫ ---
 stats = {p: {
@@ -305,7 +306,7 @@ st.title("🏆 ЛИГА БЕЛКИ")
 if st.button("🔄 Синхронизировать с Google Таблицей"):
     force_reload()
 
-st.markdown("### 📊 Таблица")
+st.markdown("### 📊 Общая турнирная таблица")
 
 # Сортируем данные
 df_sorted = df_leaderboard.sort_values(by=["Всего очков", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
@@ -348,26 +349,35 @@ st.dataframe(multi_df, use_container_width=True)
 
 st.markdown("---")
 
-# --- СТРУКТУРА ВКЛАДОК АНАЛИТИКИ ---
-tab_calendar, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
-    "📅 Календарь и История", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
+# --- СТРУКТУРА ВКЛАДОК АНАЛИТИКИ (Добавлена вкладка этапов) ---
+tab_stages, tab_partii, tab_glaza, tab_golye, tab_yaica, tab_sokyry, tab_pairs = st.tabs([
+    "📅 Этапы и Результаты", "🃏 Партии", "👁️ Глаза", "🔥 Голые", "🥚 Яйца", "🕶️ Сокыры", "👥 Рейтинг связок"
 ])
 
-# 1. ОБЪЕДИНЕННЫЙ КАЛЕНДАРЬ И ИСТОРИЯ
-with tab_calendar:
-    st.markdown("#### Расписание туров и Результаты сыгранных встреч")
+# 1. ВКЛАДКА ТАБЛИЦЫ ЭТАПОВ С РЕЗУЛЬТАТАМИ
+with tab_stages:
+    st.markdown("#### 🏆 Календарь этапов турнира")
+    
+    # Кэшируем результаты сыгранных матчей для быстрой сверки
     match_results = {}
     for g in st.session_state.games:
         try:
             wt = sorted(g['win_team'])
             lt = sorted(g['loss_team'])
             key = (tuple(wt), tuple(lt))
-            match_results[key] = f"🟢 {wt[0]}+{wt[1]} ({g['win_eyes']} глазов) vs 🔴 {lt[0]}+{lt[1]} ({g['loss_eyes']} глазов) [{g['status']}]"
+            match_results[key] = f"🟢 {wt[0]}+{wt[1]} ({g['win_eyes']} гл.) vs 🔴 {lt[0]}+{lt[1]} ({g['loss_eyes']} гл.) [{g['status']}]"
         except:
             continue
 
-    sched_data = []
-    for s in DYNAMIC_SCHEDULE:
+    # Выбор этапа
+    selected_stage = st.selectbox("Выберите этап для просмотра:", list(range(1, 71)), index=0)
+    
+    # Фильтруем расписание по выбранному этапу
+    stage_schedule = [s for s in DYNAMIC_SCHEDULE if s["stage"] == selected_stage]
+    
+    stage_data = []
+    for s in stage_schedule:
+        # Матч 1
         if s['m1_p1'] and s['m1_p2']:
             pair1_1 = sorted(s['m1_p1'])
             pair1_2 = sorted(s['m1_p2'])
@@ -377,6 +387,7 @@ with tab_calendar:
         else:
             m1_text, res1 = "—", "—"
 
+        # Матч 2
         if s['m2_p1'] and s['m2_p2']:
             pair2_1 = sorted(s['m2_p1'])
             pair2_2 = sorted(s['m2_p2'])
@@ -386,10 +397,17 @@ with tab_calendar:
         else:
             m2_text, res2 = "—", "—"
 
-        sched_data.append({
-            "Тур": f"Тур {s['tour']}", "Матч 1": m1_text, "Результат Матча 1": res1, "Матч 2": m2_text, "Результат Матча 2": res2
+        stage_data.append({
+            "Тур": f"Тур {s['tour']}", 
+            "Пропускает тур": s.get("bypass", "Нет"),
+            "Матч 1": m1_text, 
+            "Результат Матча 1": res1, 
+            "Матч 2": m2_text, 
+            "Результат Матча 2": res2
         })
-    st.dataframe(pd.DataFrame(sched_data), use_container_width=True, hide_index=True)
+        
+    st.markdown(f"##### 📊 Расписание матчей: Этап {selected_stage} из 70")
+    st.dataframe(pd.DataFrame(stage_data), use_container_width=True, hide_index=True)
 
 # 2. ПАРТИИ
 with tab_partii:
@@ -405,7 +423,7 @@ with tab_glaza:
     df_glaza.columns = ["Игрок", "Побед (Набрано)", "Проигрыш (Упущено)", "Разница"]
     st.dataframe(df_glaza.sort_values(by="Разница", ascending=False), use_container_width=True, hide_index=True)
 
-# 4. ГОЛЫЕ (Тут исправлена опечатка "Игrok" -> "Игрок")
+# 4. ГОЛЫЕ
 with tab_golye:
     st.markdown("#### Аналитика по Голым партиям")
     df_golye = df_leaderboard[["Игрок", "голый_выигр", "голый_проигр", "голый_разница"]].copy()

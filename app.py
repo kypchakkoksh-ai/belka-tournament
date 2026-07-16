@@ -253,7 +253,11 @@ global_stats = {p: {
 # Локальные словари конкретно для выбранного этапа
 stage_stats = {p: {
     "Очки": 0, "Игры": 0, "Победы": 0, "Поражения": 0,
-    "глаза_выигр": 0, "глаза_проигр": 0, "глаза_разница": 0
+    "глаза_выигр": 0, "глаза_проигр": 0, "глаза_разница": 0,
+    "партия_выигр": 0, "партия_проигр": 0, "партия_разница": 0,
+    "голый_выигр": 0, "голый_проигр": 0, "голый_разница": 0,
+    "яйца_выигр": 0, "яйца_проигр": 0, "яйца_разница": 0,
+    "сокыр_выигр": 0, "сокыр_проигр": 0, "сокыр_разница": 0
 } for p in st.session_state.players}
 
 pairs_stats = {}
@@ -322,7 +326,6 @@ for game in st.session_state.games:
             global_stats[p]["Игры"] += 1
             global_stats[p]["Победы"] += 1
             global_stats[p]["глаза_выигр"] += win_eyes
-            global_stats[p]["глаза_proигр"] = global_stats[p].get("глаза_проигр", 0) + loss_eyes  # Костыль для опечаток
             global_stats[p]["глаза_проигр"] += loss_eyes
             
             if is_this_stage_game:
@@ -335,15 +338,23 @@ for game in st.session_state.games:
             if "Партия" in raw_status:
                 global_stats[p]["партия_выигр"] += 1
                 pairs_stats[win_pair]["[Партии] Выиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["партия_выигр"] += 1
             elif "Голый" in raw_status:
                 global_stats[p]["голый_выигр"] += 1
                 pairs_stats[win_pair]["[Голый] Выиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["голый_выигр"] += 1
             elif "Сокыр" in raw_status:
                 global_stats[p]["сокыр_выигр"] += 1
                 pairs_stats[win_pair]["[Сокыр] Выиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["сокыр_выигр"] += 1
             if is_eggs:
                 global_stats[p]["яйца_выигр"] += 1
                 pairs_stats[win_pair]["[Яйца] Повесили"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["яйца_выигр"] += 1
                 
         # Запись в глобальную и локальную (поэтапную) статистику поражений
         for p in l_team:
@@ -363,19 +374,27 @@ for game in st.session_state.games:
             if "Партия" in raw_status:
                 global_stats[p]["партия_проигр"] += 1
                 pairs_stats[loss_pair]["[Партии] Проиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["партия_проигр"] += 1
             elif "Голый" in raw_status:
                 global_stats[p]["голый_проигр"] += 1
                 pairs_stats[loss_pair]["[Голый] Проиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["голый_проигр"] += 1
             elif "Сокыр" in raw_status:
                 global_stats[p]["сокыр_проигр"] += 1
                 pairs_stats[loss_pair]["[Сокыр] Проиграно"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["сокыр_проигр"] += 1
             if is_eggs:
                 global_stats[p]["яйца_проигр"] += 1
                 pairs_stats[loss_pair]["[Яйца] Получили"] += 1
+                if is_this_stage_game:
+                    stage_stats[p]["яйца_проигр"] += 1
     except:
         continue
 
-# Финализируем разницу в статистике
+# Финализируем разницу в глобальной статистике
 for p in global_stats:
     global_stats[p]["глаза_разница"] = global_stats[p]["глаза_выигр"] - global_stats[p]["глаза_проигр"]
     global_stats[p]["партия_разница"] = global_stats[p]["партия_выигр"] - global_stats[p]["партия_проигр"]
@@ -383,18 +402,56 @@ for p in global_stats:
     global_stats[p]["яйца_разница"] = global_stats[p]["яйца_выигр"] - global_stats[p]["яйца_проигр"]
     global_stats[p]["сокыр_разница"] = global_stats[p]["сокыр_выигр"] - global_stats[p]["сокыр_проигр"]
 
+# Финализируем разницу в статистике этапа
 for p in stage_stats:
     stage_stats[p]["глаза_разница"] = stage_stats[p]["глаза_выигр"] - stage_stats[p]["глаза_проигр"]
+    stage_stats[p]["партия_разница"] = stage_stats[p]["партия_выигр"] - stage_stats[p]["партия_проигр"]
+    stage_stats[p]["голый_разница"] = stage_stats[p]["голый_выигр"] - stage_stats[p]["голый_проигр"]
+    stage_stats[p]["яйца_разница"] = stage_stats[p]["яйца_выигр"] - stage_stats[p]["яйца_проигр"]
+    stage_stats[p]["сокыр_разница"] = stage_stats[p]["сокыр_выигр"] - stage_stats[p]["сокыр_проигр"]
 
 # --- 1. ПЕРВЫЙ ПЛАН: ТУРНИРНАЯ ТАБЛИЦА ВЫБРАННОГО ЭТАПА ---
 st.markdown(f"### 📊 Турнирная таблица этапа №{selected_stage}")
 
-df_stage = pd.DataFrame.from_dict(stage_stats, orient='index').reset_index()
-df_stage.rename(columns={"index": "Игрок", "Очки": "Очки этапа", "Игры": "Игр сыграно", "Победы": "Побед", "Поражения": "Поражений", "глаза_выигр": "Глаз забито", "глаза_проигр": "Глаз пропущено", "глаза_разница": "Разница глаз"}, inplace=True)
-df_stage_sorted = df_stage.sort_values(by=["Очки этапа", "Разница глаз"], ascending=[False, False]).reset_index(drop=True)
-df_stage_sorted.index = df_stage_sorted.index + 1
+df_stage_raw = pd.DataFrame.from_dict(stage_stats, orient='index').reset_index()
+df_stage_raw.rename(columns={"index": "Игрок", "Очки": "Очки этапа", "Игры": "Игр сыграно"}, inplace=True)
+df_stage_sorted = df_stage_raw.sort_values(by=["Очки этапа", "глаза_разница"], ascending=[False, False]).reset_index(drop=True)
 
-st.dataframe(df_stage_sorted, use_container_width=True)
+# Формируем плоский DataFrame для создания мультииндекса для Таблицы этапа
+multi_stage_df = pd.DataFrame()
+multi_stage_df[("", "Игрок")] = df_stage_sorted["Игрок"]
+multi_stage_df[("", "Очки этапа")] = df_stage_sorted["Очки этапа"]
+multi_stage_df[("", "Игр сыграно")] = df_stage_sorted["Игр сыграно"]
+
+# Секция "партия"
+multi_stage_df[("партия", "выигр")] = df_stage_sorted["партия_выигр"]
+multi_stage_df[("партия", "проигр")] = df_stage_sorted["партия_проигр"]
+multi_stage_df[("партия", "разница")] = df_stage_sorted["партия_разница"]
+
+# Секция "глаза"
+multi_stage_df[("глаза", "выигр")] = df_stage_sorted["глаза_выигр"]
+multi_stage_df[("глаза", "проигр")] = df_stage_sorted["глаза_проигр"]
+multi_stage_df[("глаза", "разница")] = df_stage_sorted["глаза_разница"]
+
+# Секция "голый"
+multi_stage_df[("голый", "выигр")] = df_stage_sorted["голый_выигр"]
+multi_stage_df[("голый", "проигр")] = df_stage_sorted["голый_проигр"]
+multi_stage_df[("голый", "разница")] = df_stage_sorted["голый_разница"]
+
+# Секция "яйца"
+multi_stage_df[("яйца", "выигр")] = df_stage_sorted["яйца_выигр"]
+multi_stage_df[("яйца", "проигр")] = df_stage_sorted["яйца_проигр"]
+multi_stage_df[("яйца", "разница")] = df_stage_sorted["яйца_разница"]
+
+# Секция "сокыр"
+multi_stage_df[("сокыр", "выигр")] = df_stage_sorted["сокыр_выигр"]
+multi_stage_df[("сокыр", "проигр")] = df_stage_sorted["сокыр_проигр"]
+multi_stage_df[("сокыр", "разница")] = df_stage_sorted["сокыр_разница"]
+
+multi_stage_df.columns = pd.MultiIndex.from_tuples(multi_stage_df.columns)
+multi_stage_df.index = multi_stage_df.index + 1
+
+st.dataframe(multi_stage_df, use_container_width=True)
 
 st.markdown("---")
 
@@ -433,7 +490,6 @@ with tab_schedule:
 
         stage_data.append({
             "Тур": f"Тур {s['tour']}", 
-            "Пропускает тур (Отдых)": s.get("bypass", "Нет"),
             "Матч 1": m1_text, 
             "Результат Матча 1": res1, 
             "Матч 2": m2_text, 
